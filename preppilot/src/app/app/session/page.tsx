@@ -31,9 +31,40 @@ import {
 } from "@/lib/resume/resumeKnowledge";
 import { DEFAULT_PROFILE, PROFILE_KEY } from "@/lib/api";
 import { normalizeResumeProfile, isCorruptOrGarbageProfile } from "@/lib/resumeParser";
+import { createRequestId } from "@/lib/requestId";
 
 const compLabel = (id: string) => COMPETENCIES.find((c) => c.id === id)?.label || id;
 const DRAFT_KEY = "cadence_draft";
+
+function formatInterviewQuestion(nextQuestion: any, fallbackDiff: string = "Standard") {
+  if (!nextQuestion) return null;
+  const text = nextQuestion.question || nextQuestion.text || "";
+  const topic = nextQuestion.resumeTopic || "the initiative";
+  return {
+    id: nextQuestion.id || `q_${Date.now()}`,
+    text,
+    competency: nextQuestion.competency || "Career & Project Ownership",
+    difficulty: nextQuestion.difficulty || fallbackDiff,
+    type: nextQuestion.questionType || nextQuestion.type || "Behavioral",
+    durationSec: nextQuestion.durationSec || 150,
+    resumeTopic: nextQuestion.resumeTopic,
+    reason: nextQuestion.reason,
+    evidenceUsed: nextQuestion.evidenceUsed,
+    expectedCompetency: nextQuestion.expectedCompetency,
+    followUp: nextQuestion.followUp,
+    modelAnswer: nextQuestion.modelAnswer || `When leading ${topic}, I owned the technical and business benchmarks end-to-end. We grounded our delivery in clear user metrics and shipped with measured business impact.`,
+    modelPoints: nextQuestion.modelPoints || [
+      `Direct ownership at ${topic}`,
+      'Quantified metric and outcome verification',
+      'Structured communication (STAR)'
+    ],
+    followUps: nextQuestion.followUps || [
+      `What specific metric verified success at ${topic}?`,
+      `What was the single most difficult trade-off you navigated?`,
+      `How would you scale that solution today?`
+    ]
+  };
+}
 
 function PracticeSessionInner() {
   const [params] = useSearchParams();
@@ -60,17 +91,15 @@ function PracticeSessionInner() {
     [roleParam, diffParam, params]
   );
 
-  // Initialize Question
-  const [question, setQuestion] = useState<any>({
-    id: "q_init",
-    text: "Preparing your resume-tailored question...",
-    competency: "Career & Project Ownership",
-    difficulty: diffParam,
-    type: "Behavioral",
-    durationSec: 150,
-  });
+  // Check if practice staging already prefetched an opening question
+  const [isQuestionLoading, setIsQuestionLoading] = useState(true);
 
-  const [answer, setAnswer] = useState(() => (typeof window !== "undefined" ? localStorage.getItem(DRAFT_KEY) || "" : ""));
+  // Initialize Question synchronously from prefetch cache if available
+  const [question, setQuestion] = useState<any>(null);
+  const openingRequestKey = useRef<string | null>(null);
+
+  const [answer, setAnswer] = useState("");
+  const [clientHydrated, setClientHydrated] = useState(false);
   const [mode, setMode] = useState("text");
   const [listening, setListening] = useState(false);
   const [srSupported, setSrSupported] = useState(true);
@@ -85,6 +114,9 @@ function PracticeSessionInner() {
   // Load or Initialize Resume Interviewer Session on mount
   useEffect(() => {
     if (typeof window !== 'undefined') {
+      const requestKey = `${roundParam}:${roleParam}:${diffParam}`;
+      if (openingRequestKey.current === requestKey) return;
+      openingRequestKey.current = requestKey;
       let activeState: InterviewSessionState | null = null;
       const saved = sessionStorage.getItem('cadence_resume_interview_session');
 
@@ -127,14 +159,37 @@ function PracticeSessionInner() {
 
       setResumeSession(activeState);
 
+      // Check if practice staging already prefetched and prepared the opening question
+      const cached = sessionStorage.getItem('cadence_prepared_opening_question');
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          sessionStorage.removeItem('cadence_prepared_opening_question');
+          if (parsed && (parsed.question || parsed.text)) {
+            setQuestion(formatInterviewQuestion(parsed, diffParam));
+            setIsQuestionLoading(false);
+            return;
+          }
+        } catch (e) {
+          console.error("Failed to parse cached opening question", e);
+        }
+      }
+
+      // If already set by state initializer, no need to re-fetch
+      if (question?.text) {
+        setIsQuestionLoading(false);
+        return;
+      }
+
       // Generate on the server so provider credentials never enter the browser.
       // If the route is temporarily unavailable, use the deterministic local
       // agent fallback instead of surfacing an LLM credential error to users.
+      setIsQuestionLoading(true);
       (async () => {
         try {
           const response = await fetch('/api/interviewer/next-question', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'x-request-id': createRequestId('opening-question') },
             body: JSON.stringify({ sessionState: activeState }),
           });
           if (response.ok) {
@@ -146,48 +201,32 @@ function PracticeSessionInner() {
         } catch {
           // The local deterministic fallback below keeps practice available.
         }
-        return ResumeInterviewerAgent.decideNextQuestion(activeState);
+        return ResumeInterviewerAgent.decideNextQuestion(activeState!);
       })()
         .then(({ nextQuestion, updatedState }) => {
           setResumeSession(updatedState);
           sessionStorage.setItem('cadence_resume_interview_session', JSON.stringify(updatedState));
-
-          setQuestion({
-            id: `q_${Date.now()}`,
-            text: nextQuestion.question,
-            competency: nextQuestion.competency,
-            difficulty: nextQuestion.difficulty,
-            type: nextQuestion.questionType,
-            durationSec: 150,
-            resumeTopic: nextQuestion.resumeTopic,
-            reason: nextQuestion.reason,
-            evidenceUsed: nextQuestion.evidenceUsed,
-            expectedCompetency: nextQuestion.expectedCompetency,
-            followUp: nextQuestion.followUp,
-            modelAnswer: `When leading ${nextQuestion.resumeTopic}, I owned the technical and business benchmarks end-to-end. We grounded our delivery in clear user metrics and shipped with measured business impact.`,
-            modelPoints: [
-              `Direct ownership at ${nextQuestion.resumeTopic}`,
-              'Quantified metric and outcome verification',
-              'Structured communication (STAR)'
-            ],
-            followUps: [
-              `What specific metric verified success at ${nextQuestion.resumeTopic}?`,
-              `What was the single most difficult trade-off you navigated?`,
-              `How would you scale that solution today?`
-            ]
-          });
+          setQuestion(formatInterviewQuestion(nextQuestion, diffParam));
         })
         .catch(err => {
           console.error("Failed to generate initial question", err);
+        })
+        .finally(() => {
+          setIsQuestionLoading(false);
         });
     }
   }, [roundParam, roleParam, diffParam]);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
+    setAnswer(localStorage.getItem(DRAFT_KEY) || "");
+    setClientHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (clientHydrated && typeof window !== "undefined") {
       localStorage.setItem(DRAFT_KEY, answer);
     }
-  }, [answer]);
+  }, [answer, clientHydrated]);
 
   useEffect(() => {
     if (result || running) return;
@@ -238,7 +277,7 @@ function PracticeSessionInner() {
 
   // Submit Answer -> 5-Agent Evaluation -> Next Question Decision
   const submit = async () => {
-    if (running || !answer.trim() || answer.trim().split(/\s+/).length < 10) return;
+    if (running || isQuestionLoading || !question?.text || !answer.trim() || answer.trim().split(/\s+/).length < 10) return;
     if (listening) {
       recRef.current?.stop();
       setListening(false);
@@ -271,7 +310,7 @@ function PracticeSessionInner() {
         // Try server API first
         const apiRes = await fetch('/api/interviewer/next-question', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'x-request-id': createRequestId('next-question') },
           body: JSON.stringify({
             sessionState: resumeSession,
             lastAnswer: answer.trim(),
@@ -334,22 +373,7 @@ function PracticeSessionInner() {
 
         // Move directly into the adaptive follow-up or next core question.
         // The processing state is the only in-round feedback the candidate sees.
-        setQuestion({
-          id: `q_${Date.now()}`,
-          text: nextQ.question,
-          competency: nextQ.competency,
-          difficulty: nextQ.difficulty,
-          type: nextQ.questionType,
-          durationSec: 150,
-          resumeTopic: nextQ.resumeTopic,
-          reason: nextQ.reason,
-          evidenceUsed: nextQ.evidenceUsed,
-          expectedCompetency: nextQ.expectedCompetency,
-          followUp: nextQ.followUp,
-          modelAnswer: '',
-          modelPoints: [],
-          followUps: [],
-        });
+        setQuestion(formatInterviewQuestion(nextQ, diffParam));
         setTurnIndex(index => index + 1);
         setAnswer('');
         setStages({});
@@ -380,20 +404,7 @@ function PracticeSessionInner() {
           });
           setShowFinalReport(true);
         } else {
-          setQuestion({
-            id: `q_${Date.now()}`,
-            text: localRes.nextQuestion.question,
-            competency: localRes.nextQuestion.competency,
-            difficulty: localRes.nextQuestion.difficulty,
-            type: localRes.nextQuestion.questionType,
-            durationSec: 150,
-            resumeTopic: localRes.nextQuestion.resumeTopic,
-            reason: localRes.nextQuestion.reason,
-            evidenceUsed: localRes.nextQuestion.evidenceUsed,
-            expectedCompetency: localRes.nextQuestion.expectedCompetency,
-            followUp: localRes.nextQuestion.followUp,
-            modelAnswer: '', modelPoints: [], followUps: [],
-          });
+          setQuestion(formatInterviewQuestion(localRes.nextQuestion, diffParam));
           setTurnIndex(index => index + 1);
           setAnswer('');
           setStages({});
@@ -413,30 +424,7 @@ function PracticeSessionInner() {
     }
 
     setTurnIndex(prev => prev + 1);
-    setQuestion({
-      id: `q_${Date.now()}`,
-      text: nextPreparedQuestion.question,
-      competency: nextPreparedQuestion.competency,
-      difficulty: nextPreparedQuestion.difficulty,
-      type: nextPreparedQuestion.questionType,
-      durationSec: 150,
-      resumeTopic: nextPreparedQuestion.resumeTopic,
-      reason: nextPreparedQuestion.reason,
-      evidenceUsed: nextPreparedQuestion.evidenceUsed,
-      expectedCompetency: nextPreparedQuestion.expectedCompetency,
-      followUp: nextPreparedQuestion.followUp,
-      modelAnswer: `When executing at ${nextPreparedQuestion.resumeTopic}, I prioritized quantitative measurement, structured ownership, and zero operational downtime.`,
-      modelPoints: [
-        `Direct ownership at ${nextPreparedQuestion.resumeTopic}`,
-        'Quantified metric and outcome verification',
-        'Structured communication (STAR)'
-      ],
-      followUps: [
-        `What specific metric verified success at ${nextPreparedQuestion.resumeTopic}?`,
-        `What was the single most difficult trade-off you navigated?`,
-        `How would you scale that solution today?`
-      ]
-    });
+    setQuestion(formatInterviewQuestion(nextPreparedQuestion, diffParam));
 
     setNextPreparedQuestion(null);
     setAnswer("");
@@ -458,9 +446,9 @@ function PracticeSessionInner() {
 
   // Quick helper to fill sample answer for speed demonstration
   const loadSampleAnswer = () => {
-    const topic = question.resumeTopic || 'ZAVE';
+    const topic = question?.resumeTopic || 'ZAVE';
     if (topic.toLowerCase().includes('zave')) {
-      if (question.followUp) {
+      if (question?.followUp) {
         setAnswer(`When our customer acquisition costs spiked during week 3, I ran a rapid growth experiment with local campus micro-influencers and dynamic WhatsApp discounts. This lowered our CAC by 42% and drove 65 repeat orders within 14 days.`);
       } else {
         setAnswer(`At ZAVE, I was the Co-founder leading product and growth. We built a quick-commerce fashion platform from 0 to 1, processing 120+ orders and ₹1L+ in revenue. I personally designed our customer onboarding funnel on Shopify and integrated local delivery courier APIs with automated dispatch.`);
@@ -471,122 +459,155 @@ function PracticeSessionInner() {
   };
 
   const roundDef = INTERVIEW_ROUNDS[roundParam] || INTERVIEW_ROUNDS.behavioral;
-  const currentTopic = question.resumeTopic || resumeSession?.topicsRemaining[0] || 'Resume Experience';
+  const currentTopic = question?.resumeTopic || resumeSession?.topicsRemaining[0] || 'Resume Experience';
 
   return (
-    <div ref={topRef} className="space-y-8 font-sans" data-testid="practice-session-page">
+    <div ref={topRef} className="space-y-6 font-sans max-w-7xl mx-auto pb-16" data-testid="practice-session-page">
       {/* ======================================================== */}
-      {/* SESSION TOP BAR & PROGRESSION (COCKPIT HEADER)           */}
+      {/* 1. TOP COCKPIT HUD & TELEMETRY STRIP                     */}
       {/* ======================================================== */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b-3 border-line pb-4 font-mono">
-        <div className="flex flex-wrap items-center gap-2.5">
-          <button
-            onClick={() => nav("/app/practice")}
-            data-testid="session-back-btn"
-            className="border-2 border-line bg-paper px-3 py-1 text-xs font-bold uppercase text-ink hover:bg-[#C7FF2F] transition-colors cursor-pointer mr-2 shadow-[2px_2px_0_#111111]"
-          >
-            [ ← SETUP ]
-          </button>
+      <div className="border-3 border-line bg-white shadow-[5px_5px_0_#111111] font-mono">
+        <div className="bg-ink text-paper px-4 sm:px-6 py-2 flex flex-wrap items-center justify-between gap-3 text-xs font-bold border-b-2 border-line">
+          <div className="flex items-center gap-2.5">
+            <span className="h-2.5 w-2.5 bg-[#C7FF2F] border border-line animate-pulse" />
+            <span className="text-paper">PREPPILOT_ // COCKPIT_SESSION_LIVE</span>
+            <span className="text-paper/40 hidden sm:inline">|</span>
+            <span className="text-[#C7FF2F] hidden sm:inline uppercase">{roundDef.name}</span>
+          </div>
 
-          <span className="border-2 border-line bg-[#C7FF2F] px-3 py-1 text-xs font-bold text-ink shadow-[2px_2px_0_#111111] uppercase">
-            {roundDef.name}
-          </span>
-
-          <span className="border-2 border-line bg-white px-3 py-1 text-xs font-bold text-ink shadow-[2px_2px_0_#111111] uppercase">
-            QUESTION {Math.min((resumeSession?.coreQuestionsAsked || 0) + 1, roundDef.coreQuestionCount)} / {roundDef.coreQuestionCount}
-            {question.followUp && <span className="text-[#127533] font-black ml-1.5">[ ADAPTIVE FOLLOW-UP ]</span>}
-          </span>
-
-          <span className="border-2 border-line bg-paper px-2.5 py-1 text-[11px] font-bold text-mut uppercase hidden md:inline">
-            TOPIC: {currentTopic}
-          </span>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <span className="border-2 border-line bg-paper px-2.5 py-1 text-xs font-bold text-ink hidden sm:flex">
-            COMPETENCY: <strong className="ml-1 text-[#127533]">{question.competency || 'Core Ownership'}</strong>
-          </span>
-          <span className="border-2 border-line bg-coal px-3 py-1 text-xs font-bold text-[#C7FF2F] shadow-[2px_2px_0_#111111] flex items-center gap-1.5" data-testid="session-timer">
-            <span className="h-2 w-2 bg-[#C7FF2F] animate-pulse" />
-            <Clock className="h-3.5 w-3.5 text-[#C7FF2F]" />
-            {String(Math.floor(seconds / 60)).padStart(2, "0")}:{String(seconds % 60).padStart(2, "0")}
-          </span>
-        </div>
-      </div>
-
-      {/* ======================================================== */}
-      {/* RESUME EVIDENCE CONTEXT BANNER                           */}
-      {/* ======================================================== */}
-      <div className="border-2 border-line bg-white p-3.5 shadow-[3px_3px_0_#111111] flex flex-col sm:flex-row items-start sm:items-center justify-between text-xs gap-3 font-mono">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center border border-line bg-[#C7FF2F] text-ink font-mono text-[10px] font-bold">
-            CTX
-          </span>
-          <div className="truncate text-ink">
-            <span className="font-bold text-[#127533] mr-1.5">[ AI PROBING CONTEXT ]:</span>
-            <span className="font-sans font-medium text-ink2">{question.reason || `Personalized around candidate's verified experience in ${currentTopic}.`}</span>
+          <div className="flex items-center gap-3 text-xs">
+            <div className="flex items-center gap-1.5 text-paper bg-white/10 px-2.5 py-0.5 border border-white/20" data-testid="session-timer">
+              <Clock className="h-3.5 w-3.5 text-[#C7FF2F]" />
+              <span className="font-bold text-[#C7FF2F]">
+                {String(Math.floor(seconds / 60)).padStart(2, "0")}:{String(seconds % 60).padStart(2, "0")}
+              </span>
+            </div>
+            <button
+              onClick={() => nav("/app/practice")}
+              data-testid="session-back-btn"
+              className="text-[10px] uppercase font-bold text-paper/70 hover:text-[#C7FF2F] transition-colors cursor-pointer border-b border-paper/30 pb-0.5"
+            >
+              [ EXIT SESSION ]
+            </button>
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="border border-line bg-paper px-2 py-0.5 text-[10px] font-bold uppercase text-ink flex items-center gap-1">
-            <ShieldCheck className="h-3.5 w-3.5 text-[#127533]" /> ZERO-HALLUCINATION VERIFIED
-          </span>
+
+        {/* Turn Progression & Context Rail */}
+        <div className="px-4 sm:px-6 py-3 bg-paper/50 flex flex-wrap items-center justify-between gap-4 text-xs">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="border-2 border-line bg-[#C7FF2F] text-ink font-bold px-2.5 py-0.5 uppercase shadow-[2px_2px_0_#111111]">
+              TURN 0{Math.min((resumeSession?.coreQuestionsAsked || 0) + 1, roundDef.coreQuestionCount)} OF 0{roundDef.coreQuestionCount}
+            </span>
+            {question?.followUp && (
+              <span className="border border-line bg-white text-[#127533] font-black px-2 py-0.5 uppercase">
+                ● ADAPTIVE COUNTER-PROBE
+              </span>
+            )}
+            <span className="text-mut uppercase hidden md:inline">
+              TARGET FOCUS: <strong className="text-ink font-bold">{question?.competency || 'Core Architecture'}</strong>
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 text-[11px] text-mut uppercase">
+            <span className="flex items-center gap-1 font-bold text-[#127533]">
+              <ShieldCheck className="h-3.5 w-3.5" /> GROUNDED IN:
+            </span>
+            <span className="border border-line bg-white px-2 py-0.5 text-ink font-bold">
+              {currentTopic}
+            </span>
+          </div>
         </div>
       </div>
 
       {/* ======================================================== */}
-      {/* MAIN QUESTION & RESPONSE STAGE                           */}
+      {/* 2. MAIN COCKPIT GRID (8 COLS HERO STAGE + 4 COLS RAIL)   */}
       {/* ======================================================== */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-        {/* Left Column: Question & Response Area */}
-        <div className="space-y-6 lg:col-span-5">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* PRIMARY STAGE (8 COLS): QUESTION & CANDIDATE RESPONSE */}
+        <div className="lg:col-span-8 space-y-6">
+          {/* Question Card */}
           <Reveal>
-            <div className="border-3 border-line bg-white p-6 sm:p-7 shadow-[6px_6px_0_#111111]" data-testid="question-display-card">
-              <div className="flex items-center justify-between border-b-2 border-line pb-3 font-mono text-xs font-bold">
-                <span className="bg-[#C7FF2F] px-2 py-0.5 border border-line text-ink uppercase">
-                  {question.competency} · {question.difficulty}
-                  {question.followUp ? ' · FOLLOW-UP' : ''}
-                </span>
-                <span className="text-mut uppercase">
-                  [ TURN 0{turnIndex + 1} ]
+            <div className="border-3 border-line bg-white p-6 sm:p-8 shadow-[6px_6px_0_#111111]" data-testid="question-display-card">
+              <div className="flex items-center justify-between border-b-2 border-line pb-3 font-mono text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-[#127533]" />
+                  <span className="font-bold text-ink uppercase tracking-wider">[ AI INTERVIEWER INQUIRY ]</span>
+                </div>
+                <span className="border border-line bg-paper px-2 py-0.5 text-[10px] font-bold text-mut uppercase">
+                  CALIBRATED: ~150 SECONDS
                 </span>
               </div>
 
-              <h1 className="mt-5 font-display text-2xl sm:text-3xl font-extrabold uppercase leading-tight text-ink">
-                "{question.text}"
-              </h1>
+              {/* Natural, readable typography instead of aggressive all-caps */}
+              <div className="my-5 sm:my-6 min-h-[90px] flex items-center">
+                {isQuestionLoading || !question?.text ? (
+                  <div className="w-full py-6 flex flex-col items-center justify-center space-y-3 text-center border-2 border-dashed border-line/40 bg-paper/50">
+                    <div className="inline-flex items-center gap-2 border-2 border-line bg-[#C7FF2F] px-3 py-1 font-mono text-xs font-black uppercase text-ink shadow-[2px_2px_0_#111111] animate-pulse">
+                      <span className="h-2 w-2 rounded-full bg-ink" />
+                      SYNTHESIZING RESUME PROBE VIA LLM...
+                    </div>
+                    <p className="font-mono text-xs text-mut uppercase tracking-wider">
+                      Grounding inquiry in candidate dossier · Calibrating {diffParam.toUpperCase()} seniority
+                    </p>
+                    <div className="w-56 h-2 border-2 border-line bg-paper overflow-hidden">
+                      <div className="h-full bg-ink animate-[pulse_1s_infinite] w-full" />
+                    </div>
+                  </div>
+                ) : (
+                  <h1 className="font-display text-xl sm:text-2xl md:text-3xl font-bold text-ink leading-relaxed tracking-tight">
+                    "{question.text}"
+                  </h1>
+                )}
+              </div>
 
-              <div className="mt-6 flex flex-wrap gap-2 font-mono">
-                <span className="border border-line bg-paper px-2.5 py-1 text-[10px] font-bold uppercase text-ink shadow-[2px_2px_0_#111111]">
-                  TOPIC: {currentTopic}
-                </span>
-                {question.evidenceUsed?.map((ev: string) => (
-                  <span key={ev} className="border border-line bg-white px-2 py-1 text-[10px] font-bold uppercase text-mut">
-                    {ev}
+              {/* Context Tagging */}
+              <div className="pt-4 border-t border-line flex flex-wrap items-center justify-between gap-3 font-mono text-xs">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="border border-line bg-paper px-2.5 py-1 text-[10px] font-bold uppercase text-ink">
+                    ROLE: {roleParam.toUpperCase()}
                   </span>
-                ))}
-                <span className="border border-line bg-paper px-2 py-1 text-[10px] font-bold text-mut">
-                  LIMIT: ~150s
-                </span>
+                  <span className="border border-line bg-paper px-2.5 py-1 text-[10px] font-bold uppercase text-ink">
+                    DIFFICULTY: {diffParam.toUpperCase()}
+                  </span>
+                  {question?.evidenceUsed?.slice(0, 2).map((ev: string) => (
+                    <span key={ev} className="border border-line bg-[#C7FF2F]/30 px-2 py-1 text-[10px] font-bold uppercase text-ink">
+                      REF: {ev}
+                    </span>
+                  ))}
+                </div>
+                {question?.reason && (
+                  <p className="text-[11px] text-mut italic max-w-md">
+                    {question.reason}
+                  </p>
+                )}
               </div>
             </div>
           </Reveal>
 
-          <Reveal delay={0.08}>
+          {/* Response Workspace */}
+          <Reveal delay={0.05}>
             <div className="border-3 border-line bg-white p-6 sm:p-7 shadow-[6px_6px_0_#111111]" data-testid="response-editor">
-              <div className="flex items-center justify-between border-b-2 border-line pb-3">
-                <p className="eyebrow">Candidate Response</p>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b-2 border-line pb-3.5">
+                <div>
+                  <span className="font-mono text-xs font-black uppercase tracking-wider text-ink block">
+                    CANDIDATE RESPONSE CONSOLE
+                  </span>
+                  <p className="font-sans text-[11px] text-mut mt-0.5">
+                    Structure your answer with situation context, technical trade-offs, and quantified results.
+                  </p>
+                </div>
+
                 <div className="flex border-2 border-line p-0.5 bg-paper font-mono" data-testid="speech-recording-control">
                   {[
-                    { id: "text", icon: PenLine, label: "Write", testid: "text-mode-btn" },
-                    { id: "voice", icon: Mic, label: "Speak", testid: "voice-mode-btn" },
+                    { id: "text", icon: PenLine, label: "Keyboard", testid: "text-mode-btn" },
+                    { id: "voice", icon: Mic, label: "Microphone", testid: "voice-mode-btn" },
                   ].map(({ id, icon: Icon, label, testid }) => (
                     <button
                       key={id}
                       data-testid={testid}
                       onClick={() => setMode(id)}
-                      className={`flex items-center gap-1.5 px-3 py-1 text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
-                        mode === id ? "bg-ink text-[#C7FF2F]" : "text-ink hover:bg-white"
+                      className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                        mode === id ? "bg-ink text-[#C7FF2F] shadow-[2px_2px_0_#127533]" : "text-ink hover:bg-white"
                       }`}
                     >
                       <Icon className="h-3.5 w-3.5" /> {label}
@@ -595,14 +616,15 @@ function PracticeSessionInner() {
                 </div>
               </div>
 
+              {/* Voice Recording Widget */}
               {mode === "voice" && (
-                <div className="mt-5 border-2 border-line bg-paper p-4 shadow-[3px_3px_0_#111111]" data-testid="voice-panel">
+                <div className="mt-4 border-2 border-line bg-paper p-4 shadow-[3px_3px_0_#111111]" data-testid="voice-panel">
                   <div className="flex items-center justify-between gap-4">
                     <button
                       data-testid="voice-record-btn"
                       onClick={toggleMic}
                       disabled={!srSupported}
-                      className={`flex h-14 w-14 shrink-0 items-center justify-center border-2 border-line transition-all cursor-pointer font-bold ${
+                      className={`flex h-12 w-12 shrink-0 items-center justify-center border-2 border-line transition-all cursor-pointer font-bold ${
                         listening
                           ? "bg-[#FF5C35] text-white shadow-[3px_3px_0_#111111] animate-pulse"
                           : "bg-[#C7FF2F] text-ink hover:bg-[#D6FF59] shadow-[3px_3px_0_#111111]"
@@ -612,66 +634,71 @@ function PracticeSessionInner() {
                     </button>
                     {listening ? (
                       <div className="flex h-10 flex-1 items-end justify-center gap-1.5 border border-line bg-white p-2" data-testid="voice-waveform">
-                        {Array.from({ length: 18 }).map((_, i) => (
+                        {Array.from({ length: 24 }).map((_, i) => (
                           <span
                             key={i}
                             className="w-1.5 origin-bottom animate-wave bg-[#127533]"
-                            style={{ height: "70%", animationDelay: `${i * 0.07}s` }}
+                            style={{ height: "70%", animationDelay: `${i * 0.05}s` }}
                           />
                         ))}
                       </div>
                     ) : (
                       <p className="flex-1 font-mono text-xs leading-relaxed text-ink2 font-medium">
                         {srSupported
-                          ? "Press microphone button to capture spoken answer live."
-                          : "Voice input is not supported in this browser environment. Use text mode."}
+                          ? "Click the microphone button to start real-time speech capture."
+                          : "Voice input is not supported in this browser. Please type your response."}
                       </p>
                     )}
                   </div>
                 </div>
               )}
 
-              <textarea
-                data-testid="response-text-area"
-                value={answer}
-                onChange={(e) => setAnswer(e.target.value)}
-                rows={8}
-                placeholder={
-                  mode === "voice"
-                    ? "Your live speech transcription appears here. You can edit text before submitting…"
-                    : "Deliver a structured answer with technical trade-offs, metrics, and first-person ownership…"
-                }
-                className="input-warm mt-4 resize-none leading-relaxed text-sm font-sans"
-              />
+              {/* Textarea */}
+              <div className="mt-4">
+                <textarea
+                  data-testid="response-text-area"
+                  value={answer}
+                  onChange={(e) => setAnswer(e.target.value)}
+                  rows={8}
+                  placeholder={
+                    mode === "voice"
+                      ? "Your live speech transcription appears here. You can edit text before submitting…"
+                      : "Deliver a structured response. Detail the specific engineering context, alternatives evaluated, trade-offs made, and the quantified outcome…"
+                  }
+                  className="input-warm w-full resize-y min-h-[190px] leading-relaxed text-sm font-sans p-4 border-2 border-line bg-paper/20 focus:bg-white transition-colors"
+                />
+              </div>
 
-              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-line font-mono">
-                <div className="flex gap-3 text-xs font-bold uppercase">
-                  <span data-testid="live-word-count" className={words < 20 ? "text-[#FF5C35]" : "text-ink"}>
+              {/* Telemetry Counters & Action Strip */}
+              <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-3.5 border-t-2 border-line font-mono">
+                <div className="flex items-center gap-3 text-xs font-bold uppercase">
+                  <span data-testid="live-word-count" className={`px-2 py-0.5 border border-line ${words < 20 ? "bg-[#FFEFEA] text-[#FF5C35]" : "bg-paper text-ink"}`}>
                     {words} WORDS
                   </span>
-                  <span data-testid="live-filler-count" className={fillers > 2 ? "text-[#FF5C35]" : "text-mut"}>
+                  <span data-testid="live-filler-count" className={`px-2 py-0.5 border border-line ${fillers > 2 ? "bg-[#FFEFEA] text-[#FF5C35]" : "bg-paper text-mut"}`}>
                     {fillers} FILLERS
                   </span>
-                  <span data-testid="live-hedge-count" className={hedges > 2 ? "text-[#FF5C35]" : "text-mut"}>
+                  <span data-testid="live-hedge-count" className={`px-2 py-0.5 border border-line ${hedges > 2 ? "bg-[#FFEFEA] text-[#FF5C35]" : "bg-paper text-mut"}`}>
                     {hedges} HEDGES
                   </span>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3 self-end sm:self-auto">
                   <button
                     onClick={loadSampleAnswer}
                     type="button"
-                    className="border border-line bg-paper px-2.5 py-1 text-xs font-bold uppercase text-ink hover:bg-[#C7FF2F] transition-colors cursor-pointer"
+                    className="border border-line bg-paper px-3 py-2 text-xs font-bold uppercase text-ink hover:bg-[#C7FF2F] transition-colors cursor-pointer"
                   >
-                    [ QUICK-FILL ]
+                    [ DEMO QUICK-FILL ]
                   </button>
                   <button
                     data-testid="submit-response-btn"
                     onClick={submit}
-                    disabled={running || words < 10}
-                    className="btn-terra !px-5 !py-2.5 text-xs font-bold disabled:opacity-40 cursor-pointer shadow-[3px_3px_0_#111111]"
+                    disabled={running || isQuestionLoading || !question?.text || words < 10}
+                    className="btn-terra !px-6 !py-3 text-xs font-bold disabled:opacity-40 cursor-pointer shadow-[4px_4px_0_#111111] inline-flex items-center gap-2"
                   >
-                    {running ? "ANALYZING RESPONSE…" : "SUBMIT RESPONSE"} {!running && <ArrowRight className="h-4 w-4 ml-1" />}
+                    <span>{running ? "ANALYZING RESPONSE…" : "SUBMIT RESPONSE"}</span>
+                    {!running && <ArrowRight className="h-4 w-4" />}
                   </button>
                 </div>
               </div>
@@ -679,59 +706,76 @@ function PracticeSessionInner() {
           </Reveal>
         </div>
 
-        {/* Right Column: 5-Agent Stepper & Dynamic Feedback */}
-        <div className="lg:col-span-7">
-          <Reveal delay={0.05}>
-            <div className="border-3 border-line bg-white p-6 sm:p-8 shadow-[6px_6px_0_#111111]" data-testid="feedback-card">
+        {/* RIGHT COLUMN (4 COLS): LIVE AGENT TELEMETRY & TURN BLUEPRINT */}
+        <div className="lg:col-span-4 space-y-6">
+          <Reveal delay={0.08}>
+            <div className="border-3 border-line bg-white p-5 sm:p-6 shadow-[6px_6px_0_#111111]" data-testid="feedback-card">
+              <div className="flex items-center justify-between border-b-2 border-line pb-3 mb-4 font-mono">
+                <span className="text-xs font-black uppercase tracking-wider text-ink">[ 5-AGENT PIPELINE ]</span>
+                <span className="border border-line bg-[#C7FF2F] px-1.5 py-0.2 text-[9px] font-black text-ink uppercase">
+                  {running ? "● PROCESSING" : "STANDBY"}
+                </span>
+              </div>
+
+              {/* Agent Stepper */}
               <AgentStepper stages={stages} />
 
-              {!running && (
-                <div className="py-14 text-center border-2 border-dashed border-line bg-paper p-8 mt-6" data-testid="feedback-empty-state">
-                  <span className="inline-flex h-10 w-10 items-center justify-center border-2 border-line bg-[#C7FF2F] text-ink mb-3 shadow-[2px_2px_0_#111111]">
-                    <Sparkles className="h-5 w-5" />
-                  </span>
-                  <p className="font-display text-xl font-bold uppercase text-ink">AI Interviewer is Active</p>
-                  <p className="mt-2 font-mono text-xs text-mut max-w-sm mx-auto uppercase">
-                    Every answer is analyzed internally to adapt the next question. Full synthesis report generates at round completion.
-                  </p>
+              {/* Processing Animation */}
+              {running && (
+                <div className="p-4 border-2 border-line bg-ink text-paper mt-5 font-mono space-y-3 shadow-[3px_3px_0_#C7FF2F]">
+                  <div className="flex items-center justify-between text-xs font-bold text-[#C7FF2F] border-b border-white/20 pb-2">
+                    <span className="flex items-center gap-1.5">
+                      <span className="h-2 w-2 bg-[#C7FF2F] animate-pulse" />
+                      ANALYZING TURN
+                    </span>
+                    <span className="text-[10px] text-paper/60 uppercase">EVALUATING</span>
+                  </div>
+                  <div className="space-y-1.5 text-[11px] text-paper/80">
+                    <div className="flex justify-between">
+                      <span>SPEECH ACOUSTICS:</span>
+                      <span className="text-[#C7FF2F]">CHECKING</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>STAR BEATS:</span>
+                      <span className="text-[#C7FF2F]">CHECKING</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>TECHNICAL DEPTH:</span>
+                      <span className="text-[#C7FF2F]">CHECKING</span>
+                    </div>
+                  </div>
+                  <div className="h-2 w-full border border-white/30 bg-white/10 overflow-hidden">
+                    <motion.div
+                      className="h-full bg-[#C7FF2F]"
+                      animate={{ x: ["-100%", "200%"] }}
+                      transition={{ duration: 1.2, repeat: Infinity, ease: "linear" }}
+                    />
+                  </div>
                 </div>
               )}
 
-              {running && (
-                <div className="py-8 px-6 border-2 border-line bg-coal text-paper mt-6 font-mono space-y-4 shadow-[4px_4px_0_#C7FF2F]">
-                  <div className="flex items-center justify-between border-b border-coaline pb-3">
-                    <span className="text-xs font-bold uppercase text-[#C7FF2F] flex items-center gap-2">
-                      <span className="h-2 w-2 bg-[#C7FF2F] animate-pulse" />
-                      PREPPILOT ENGINE // ANALYZING RESPONSE...
-                    </span>
-                    <span className="text-[10px] text-paper/60 uppercase">PIPELINE INFLIGHT</span>
-                  </div>
-
-                  <div className="space-y-2 text-xs">
-                    <div className="flex justify-between text-paper/70 font-bold uppercase">
-                      <span>CLARITY &amp; ACOUSTIC CADENCE</span>
-                      <span className="text-[#C7FF2F]">[ CHECKING ]</span>
-                    </div>
-                    <div className="flex justify-between text-paper/70 font-bold uppercase">
-                      <span>STAR STRUCTURE EXTRACTION</span>
-                      <span className="text-[#C7FF2F]">[ CHECKING ]</span>
-                    </div>
-                    <div className="flex justify-between text-paper/70 font-bold uppercase">
-                      <span>TECHNICAL DEPTH &amp; RELEVANCE</span>
-                      <span className="text-[#C7FF2F]">[ CHECKING ]</span>
-                    </div>
-                    <div className="flex justify-between text-paper/70 font-bold uppercase">
-                      <span>SYNTHESIZING NEXT ADAPTIVE TURN</span>
-                      <span className="text-[#C7FF2F]">[ QUEUED ]</span>
-                    </div>
-                  </div>
-
-                  <div className="h-2 w-full border border-coaline bg-coal3 p-0.5 overflow-hidden">
-                    <motion.div
-                      className="h-full bg-[#C7FF2F]"
-                      animate={{ x: ["-100%", "300%"] }}
-                      transition={{ duration: 1.2, repeat: Infinity, ease: "linear" }}
-                    />
+              {/* In-turn Guidance Blueprint */}
+              {!running && (
+                <div className="mt-5 border-2 border-line bg-paper p-4 font-mono space-y-2.5">
+                  <span className="text-[10px] font-black uppercase text-ink tracking-wider block border-b border-line pb-1.5">
+                    [ WHAT THE INTERVIEWER IS EVALUATING ]
+                  </span>
+                  <ul className="space-y-1.5 text-xs text-ink font-sans font-medium">
+                    <li className="flex items-start gap-2">
+                      <span className="text-[#127533] font-bold">✓</span>
+                      <span>Specific architectural decisions & trade-offs</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-[#127533] font-bold">✓</span>
+                      <span>Quantified production outcomes & scale</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-[#127533] font-bold">✓</span>
+                      <span>Direct personal ownership (avoid passive "we")</span>
+                    </li>
+                  </ul>
+                  <div className="pt-2 border-t border-line text-[10px] text-mut uppercase">
+                    FULL SYNTHESIS GENERATES AFTER ROUND TURN LIMIT
                   </div>
                 </div>
               )}
@@ -764,6 +808,7 @@ function PracticeSessionInner() {
           ];
 
           const topImprovementAreas = weaknesses.slice(0, 3);
+          const llmEvaluatedTurns = completedTurns.filter(t => String(t.result?.evaluationSource || '').toLowerCase().includes('llm') || String(t.result?.evaluationSource || '').toLowerCase().includes('openai'));
 
           const evidenceSpans = completedTurns
             .map(t => {
@@ -850,7 +895,7 @@ function PracticeSessionInner() {
                       <span className="px-3 py-1 border-2 border-line bg-[#C7FF2F] text-ink text-xs font-bold uppercase tracking-wider">
                         {isMock ? "FULL MOCK INTERVIEW // FINAL REPORT" : `ROUND SUMMARY // ${roundDef.name.toUpperCase()}`}
                       </span>
-                      <span className="text-xs text-mut font-bold">[ 5-AGENT SYNTHESIS ]</span>
+                      <span className="text-xs text-mut font-bold">[ {llmEvaluatedTurns.length > 0 ? 'LLM EVALUATION ACTIVE' : 'LOCAL FALLBACK'} ]</span>
                     </div>
                     <h2 className="font-display text-3xl sm:text-4xl font-extrabold uppercase text-ink mt-3">
                       {isMock ? "Interview Evaluation Report" : `${roundDef.name} Summary & Recommendations`}

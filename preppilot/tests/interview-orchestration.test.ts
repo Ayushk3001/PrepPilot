@@ -38,7 +38,7 @@ test('controller ends an expired interview regardless of model intent', () => {
 test('LangGraph returns a completion turn when the hard limit is reached', async () => {
   const state = initializeSessionState(knowledge, 'hr', 'da');
   state.totalQuestionsAsked = state.maxTotalQuestions;
-  const result = await runInterviewGraph({ sessionState: state, lastAnswer: 'A detailed answer.', lastEvaluation: {}, nextQuestion: undefined, complete: false });
+  const result = await runInterviewGraph({ sessionState: state, lastAnswer: 'A detailed answer.', lastEvaluation: {}, nextQuestion: undefined, complete: false, requestId: undefined });
   assert.equal(result.complete, true);
   assert.equal(result.nextQuestion?.isCompleted, true);
   assert.equal(result.sessionState.isCompleted, true);

@@ -1,7 +1,7 @@
 import { Annotation, END, START, StateGraph } from '@langchain/langgraph';
 import { InterviewSessionState, InterviewerQuestionOutput, ResumeInterviewerAgent } from '@/agents/resumeInterviewerAgent';
 import { InterviewController } from './controller';
-import { traceInterviewRun } from './tracing';
+import { traceInterviewRun, traceInterviewStage, traceLlmCall } from './tracing';
 
 const InterviewGraphState = Annotation.Root({
   sessionState: Annotation<InterviewSessionState>,
@@ -9,6 +9,7 @@ const InterviewGraphState = Annotation.Root({
   lastEvaluation: Annotation<unknown | undefined>,
   nextQuestion: Annotation<InterviewerQuestionOutput | undefined>,
   complete: Annotation<boolean>,
+  requestId: Annotation<string | undefined>,
 });
 
 export type InterviewGraphInput = typeof InterviewGraphState.State;
@@ -29,7 +30,11 @@ const workflow = new StateGraph(InterviewGraphState)
   .addNode('evaluate_answer', (state) => ({ lastEvaluation: state.lastEvaluation }))
   .addNode('question_limit_check', (state) => ({ complete: InterviewController.shouldEndInterview(state.sessionState) }))
   .addNode('generate_next_question', async (state) => {
-    const result = await ResumeInterviewerAgent.decideNextQuestion(state.sessionState, state.lastAnswer, state.lastEvaluation);
+    const result = await ResumeInterviewerAgent.decideNextQuestion(state.sessionState, state.lastAnswer, state.lastEvaluation, {
+      traceLlm: traceLlmCall,
+      traceStage: traceInterviewStage,
+      requestId: state.requestId,
+    });
     return { sessionState: result.updatedState, nextQuestion: result.nextQuestion, complete: Boolean(result.nextQuestion.isCompleted) };
   })
   // These presentation nodes deliberately do not create content. Their
@@ -53,7 +58,7 @@ const workflow = new StateGraph(InterviewGraphState)
 
 export async function runInterviewGraph(input: InterviewGraphInput) {
   return traceInterviewRun(
-    { sessionId: input.sessionState.sessionId, targetRole: input.sessionState.targetRole, interviewRound: input.sessionState.round },
+    { sessionId: input.sessionState.sessionId, targetRole: input.sessionState.targetRole, interviewRound: input.sessionState.round, requestId: input.requestId },
     () => workflow.invoke(input),
   );
 }

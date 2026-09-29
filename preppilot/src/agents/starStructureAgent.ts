@@ -10,6 +10,7 @@ export interface StarAgentInput {
 }
 
 export interface StarAgentOutput {
+  evaluationSource?: 'llm' | 'deterministic_fallback';
   structure_score: number; // 0-100
   starFilled: number; // 0-4
   situation: StarComponentAnalysis;

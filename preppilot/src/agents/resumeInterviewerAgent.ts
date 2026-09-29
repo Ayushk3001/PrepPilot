@@ -4,7 +4,16 @@ import {
   InterviewRoundKey,
   INTERVIEW_ROUNDS,
 } from '@/lib/resume/resumeKnowledge';
-import { executeChatCompletion } from '@/server/ai/llmClient';
+import { executeChatCompletion, extractChatCompletionContent, getChatCompletionContentLocations } from '@/server/ai/llmClient';
+import { generateQuestion } from './questionGenerationService';
+
+export const INTERVIEW_QUESTION_LLM_TIMEOUT_MS = 20_000;
+
+export interface InterviewQuestionTracing {
+  traceLlm<T>(name: string, messages: Array<{ role?: string; content?: string }>, run: () => Promise<T>, options?: { model?: string; baseURL?: string; requestId?: string; metadata?: Record<string, unknown> }): Promise<T>;
+  traceStage<T>(name: string, run: () => Promise<T> | T, metadata?: Record<string, unknown>): Promise<T>;
+  requestId?: string;
+}
 
 export interface InterviewerQuestionOutput {
   question: string;
@@ -19,6 +28,10 @@ export interface InterviewerQuestionOutput {
   followUp: boolean;
   evidenceUsed: string[];
   isCompleted?: boolean;
+  generationSource?: 'llm' | 'deterministic_fallback';
+  llmAttempted?: boolean;
+  llmSucceeded?: boolean;
+  fallbackReason?: string;
 }
 
 export interface InterviewTurnRecord {
@@ -50,6 +63,8 @@ export interface InterviewSessionState {
   currentFollowUpsForCore: number;
   topicsCovered: string[];
   topicsRemaining: string[];
+  /** Compact question-only history used for deduplication and prompt context. */
+  questionHistory: string[];
   isCompleted: boolean;
 }
 
@@ -85,6 +100,7 @@ export function initializeSessionState(
     currentFollowUpsForCore: 0,
     topicsCovered: [],
     topicsRemaining: allTopics,
+    questionHistory: [],
     isCompleted: false,
   };
 }
@@ -101,7 +117,8 @@ export class ResumeInterviewerAgent {
   public static async decideNextQuestion(
     state: InterviewSessionState,
     lastAnswer?: string,
-    lastEvaluation?: any
+    lastEvaluation?: any,
+    tracing?: InterviewQuestionTracing,
   ): Promise<{ nextQuestion: InterviewerQuestionOutput; updatedState: InterviewSessionState }> {
     const updatedState = { ...state };
 
@@ -145,21 +162,35 @@ export class ResumeInterviewerAgent {
     // This agent is also used as the browser's offline fallback. Provider
     // credentials deliberately exist only on the server, so browser execution
     // must remain deterministic and must never attempt an LLM request.
-    const canUseServerLLM = typeof window === 'undefined' && Boolean(process.env.OPENAI_API_KEY?.trim());
-
-    // HR is deliberately controlled by the round template. A language model
-    // can enrich technical rounds, but it must not turn an HR introduction
-    // into a project-depth interview simply because the resume is technical.
-    if (updatedState.round === 'hr' || !canUseServerLLM) {
-      nextQuestion = this.generateFallbackQuestion(updatedState, shouldAskFollowUp, lastAnswer, lastEvaluation);
-    } else {
-      try {
-        nextQuestion = await this.queryLLMForNextQuestion(updatedState, shouldAskFollowUp, lastAnswer, lastEvaluation);
-      } catch (err) {
-        console.warn('[ResumeInterviewerAgent] LLM call failed or unavailable, using deterministic resume-aware fallback:', err);
-        nextQuestion = this.generateFallbackQuestion(updatedState, shouldAskFollowUp, lastAnswer, lastEvaluation);
-      }
-    }
+    // One policy boundary owns provider selection, validation, diagnostics, and
+    // fallback. The rest of the interview only receives a question object.
+    const generated = await generateQuestion(
+      {
+        round: updatedState.round,
+        targetRole: updatedState.targetRole,
+        difficulty: updatedState.difficulty,
+        resumeTopic: updatedState.evidenceGraph.find(e => !e.covered)?.topic || updatedState.evidenceGraph[0]?.topic,
+        previousQuestions: updatedState.questionHistory || [],
+        previousAnswer: lastAnswer,
+      },
+      () => this.generateFallbackQuestion(updatedState, shouldAskFollowUp, lastAnswer, lastEvaluation),
+      {
+        generateWithLlm: () => this.queryLLMForNextQuestion(updatedState, shouldAskFollowUp, lastAnswer, lastEvaluation, tracing),
+        traceFallback: tracing
+          ? (fallback, metadata) => tracing.traceStage('fallback_question_generation', fallback, {
+            session_id: updatedState.sessionId,
+            question_number: updatedState.totalQuestionsAsked + 1,
+            ...metadata,
+          })
+          : undefined,
+      },
+    );
+    nextQuestion = generated.question;
+    nextQuestion.generationSource = generated.source === 'llm' ? 'llm' : 'deterministic_fallback';
+    nextQuestion.llmAttempted = generated.llmAttempted;
+    nextQuestion.llmSucceeded = generated.llmSucceeded;
+    nextQuestion.fallbackReason = generated.fallbackReason;
+    updatedState.questionHistory = [...(updatedState.questionHistory || []), nextQuestion.question].slice(-20);
 
     // Update state progression
     if (nextQuestion.followUp) {
@@ -220,7 +251,8 @@ export class ResumeInterviewerAgent {
     state: InterviewSessionState,
     isFollowUp: boolean,
     lastAnswer?: string,
-    lastEvaluation?: any
+    lastEvaluation?: any,
+    tracing?: InterviewQuestionTracing,
   ): Promise<InterviewerQuestionOutput> {
     const roundDef = INTERVIEW_ROUNDS[state.round] || INTERVIEW_ROUNDS.behavioral;
     const targetEvidence = state.evidenceGraph.find(e => !e.covered) || state.evidenceGraph[0];
@@ -246,19 +278,7 @@ export class ResumeInterviewerAgent {
       identifiedWeakness: lastEvaluation?.improvements?.[0] || null,
     };
 
-    const systemPrompt = `You are an elite, perceptive, and highly experienced AI Interviewer conducting a rigorous job interview.
-You have thoroughly reviewed the candidate's actual resume.
-CRITICAL MANDATES:
-1. Ground your questions in the ACTUAL FACTS from the candidate's resume (companies, ventures, roles, projects, technologies, metrics).
-2. NEVER hallucinate or invent experiences, companies, metrics, or teams that are not in the resume.
-3. If this is a FOLLOW-UP question, probe the specific gap or claim in the candidate's previous answer (e.g. asking for specific metrics, personal contribution vs team, or architectural rationale).
-4. If this is a NEW core question, choose an uncovered resume topic and frame the question appropriate for the current interview round:
-   - HR / Intro: Background, career trajectory, motivation, and culture/role fit. Do NOT ask for architecture, project selection, implementation detail, technical trade-offs, or metrics.
-   - Behavioral: STAR situations of adversity, disagreement, or failure in their past ventures/jobs.
-   - Technical: In-depth questions about specific technologies, algorithms, databases, or architectures listed on their resume.
-   - Situational: Hypothetical operational challenges calibrated to their real experience (e.g., startup orders crashing, partner outage).
-   - Leadership: Ownership, unassigned initiatives, founding decisions, stakeholder management.
-5. Return ONLY a single, valid JSON object matching the requested schema.`;
+    const systemPrompt = `Generate exactly one concise interview question using the supplied candidate context. Ground it in the resume and current interview round. Avoid invented facts. Return only this JSON object: {"question":"<maximum 45-word interview question>"}. No reasoning, explanation, markdown, preamble, scoring, or additional fields.`;
     const roleGuidance = /\b(data analyst|analyst|\bda\b)\b/i.test(state.targetRole)
       ? 'For this Data Analyst role, prioritize SQL, data quality, interpretation, dashboards, statistics, business reasoning, and stakeholder communication. Do not ask ML or system-design questions unless the resume directly supports them.'
       : /\b(executive|leadership|manager|\bem\b)\b/i.test(state.targetRole)
@@ -274,7 +294,9 @@ Question constraints: ask one conversational question in 20–45 words (two shor
 
 For HR / Introduction, ask a warm, people-focused interviewer question about the candidate's story, motivation, or fit—not a technical or project-depth question.
 
-Return ONLY valid JSON matching this exact structure:
+Return ONLY valid JSON with one property: {"question":"Your precise, conversational question string here"}.
+Do not include markdown, code fences, analysis, reasoning, explanations, metadata, or any other properties.
+/*
 {
   "question": "Your precise, conversational question string here",
   "questionType": "${state.round === 'technical' ? 'technical' : state.round === 'situational' ? 'situational' : state.round === 'leadership' ? 'leadership' : state.round === 'hr' ? 'hr' : 'behavioral'}",
@@ -287,25 +309,97 @@ Return ONLY valid JSON matching this exact structure:
   "expectedCompetency": "Key competency being tested",
   "followUp": ${isFollowUp},
   "evidenceUsed": ${JSON.stringify(targetEvidence?.facts?.slice(0, 2) || [targetEvidence?.topic || 'Resume'])}
-}`;
+}*/`;
 
-    const res = await executeChatCompletion({
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ],
-      responseFormat: 'json_object',
-      temperature: isFollowUp ? 0.3 : 0.6,
-    });
+    const minimalPrompt = `Candidate context:\n${JSON.stringify(promptContext)}\nRole guidance: ${roleGuidance}\nGenerate one conversational question of no more than 45 words. Return only {"question":"<maximum 45-word interview question>"}. No reasoning, explanation, markdown, preamble, scoring, or additional fields.`;
+    const messages = [
+      { role: 'system' as const, content: systemPrompt },
+      { role: 'user' as const, content: minimalPrompt },
+    ];
+    const traceMetadata = {
+      session_id: state.sessionId,
+      question_number: state.totalQuestionsAsked + 1,
+      interview_type: state.round,
+      question_source: 'llm',
+      model: process.env.OPENAI_MODEL || 'gpt-5-nano',
+    };
+    const execute = () => executeChatCompletion({
+        messages,
+        responseFormat: 'json_object',
+        temperature: isFollowUp ? 0.3 : 0.6,
+        component: 'llm_question_generation',
+        caller: 'interviewer.generate_question',
+        langGraphNode: 'generate_next_question',
+        purpose: 'interview_question_generation',
+        sessionId: state.sessionId,
+        questionNumber: state.totalQuestionsAsked + 1,
+        questionSource: 'llm',
+        requestId: tracing?.requestId || state.sessionId,
+        timeoutMs: INTERVIEW_QUESTION_LLM_TIMEOUT_MS,
+        maxRetries: 0,
+        maxOutputTokens: 800,
+        reasoningEffort: 'low',
+      });
+    const res = tracing
+      ? await tracing.traceLlm('llm_question_generation', messages, execute, { model: process.env.OPENAI_MODEL, baseURL: process.env.OPENAI_BASE_URL, requestId: state.sessionId, metadata: traceMetadata })
+      : await execute();
 
-    const parsed = JSON.parse((res as any).choices?.[0]?.message?.content || '{}');
-    if (!parsed.question || typeof parsed.question !== 'string') {
-      throw new Error('Malformed JSON received from LLM');
-    }
+    const validate = () => {
+      const choice = (res as any)?.choices?.[0];
+      const raw = extractChatCompletionContent(res);
+      const finishReason = choice?.finish_reason || 'unknown';
+      const usage = (res as any)?.usage;
+      let parsed: any = null;
+      let parseStatus = 'failed';
+      let validationError = '';
+      const missingRequiredFields: string[] = [];
+      try {
+        const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+        parsed = JSON.parse(cleaned);
+        parseStatus = 'json';
+      } catch {
+        const quoted = raw.match(/"question"\s*:\s*"([\s\S]*?)"/i)?.[1];
+        const plain = quoted || (raw && !raw.startsWith('{') ? raw.replace(/^question\s*:\s*/i, '').trim() : '');
+        if (plain) {
+          parsed = { question: plain.replace(/^['"]|['"]$/g, '').trim() };
+          parseStatus = 'plain_text_recovered';
+        } else {
+          validationError = 'unparseable_or_empty_response';
+        }
+      }
+      const questionText = typeof parsed?.question === 'string' ? parsed.question.trim() : '';
+      if (!questionText) missingRequiredFields.push('question');
+      if (finishReason === 'length') validationError = 'provider_output_truncated';
+      if (finishReason !== 'length' && !raw) validationError = 'empty_provider_response';
+      else if (finishReason !== 'length' && parseStatus === 'failed') validationError = 'malformed_structured_output';
+      else if (missingRequiredFields.length) validationError = validationError || 'semantic_validation_failed';
+      console.info('[QUESTION_PARSE_DIAGNOSTIC]', JSON.stringify({
+        request_id: tracing?.requestId || state.sessionId,
+        question_number: state.totalQuestionsAsked + 1,
+        finish_reason: finishReason,
+        raw_response_length: raw.length,
+        raw_response_preview: raw.slice(0, 240),
+        content_type: typeof choice?.message?.content,
+        content_locations: getChatCompletionContentLocations(res),
+        completion_tokens: usage?.completion_tokens,
+        parsed_response: parsed ? { question: questionText.slice(0, 240) } : null,
+        parse_status: parseStatus,
+        validation_success: Boolean(questionText) && finishReason !== 'length',
+        validation_error: validationError || undefined,
+        missing_required_fields: missingRequiredFields,
+      }));
+      if (!questionText || finishReason === 'length') {
+        throw new Error(validationError || (!raw ? 'empty_provider_response' : 'semantic_validation_failed'));
+      }
+      return { ...parsed, question: questionText };
+    };
+    const parsed = tracing
+      ? await tracing.traceStage('question_validation', validate, traceMetadata)
+      : validate();
 
     return {
       question: this.limitQuestionLength(parsed.question),
-      questionType: parsed.questionType || (state.round as any) || 'behavioral',
+      questionType: String(parsed.questionType || (state.round as any) || 'behavioral').toLowerCase() as InterviewerQuestionOutput['questionType'],
       round: state.round,
       competency: parsed.competency || roundDef.primaryCompetencies[0],
       difficulty: state.difficulty,

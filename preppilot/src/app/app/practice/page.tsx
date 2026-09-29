@@ -6,7 +6,7 @@ import { useNavigate } from "@/lib/routerCompat";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   ArrowRight, Mic, Upload, FileText, CheckCircle2, 
-  Sparkles, Building2, User, ChevronRight, Check, Compass, Award, ShieldCheck
+  Sparkles, Building2, User, ChevronRight, Check, Compass, Award, ShieldCheck, Zap, PlayCircle, Radio
 } from "lucide-react";
 import { ROLES, DIFFICULTIES } from "@/lib/mockData";
 import { parseResumeText, parseJDText, analyzeResumeJDMatch, normalizeResumeProfile, isCorruptOrGarbageProfile } from "@/lib/resumeParser";
@@ -19,6 +19,7 @@ import {
 import { initializeSessionState, ResumeInterviewerAgent } from "@/agents/resumeInterviewerAgent";
 import { DEFAULT_PROFILE, PROFILE_KEY, createEmptyProfile } from "@/lib/api";
 import { Reveal } from "@/components/ui-bits";
+import { createRequestId } from "@/lib/requestId";
 
 export default function PracticeSetup() {
   const nav = useNavigate();
@@ -27,7 +28,6 @@ export default function PracticeSetup() {
   const [resumeText, setResumeText] = useState<string>('');
   const [fileName, setFileName] = useState<string>('');
   const [showUploadArea, setShowUploadArea] = useState<boolean>(false);
-  const [showEvidence, setShowEvidence] = useState<boolean>(false);
   const [isLaunchingInterview, setIsLaunchingInterview] = useState(false);
   const [isUploading, setIsUploading] = useState<boolean>(false);
 
@@ -122,6 +122,7 @@ export default function PracticeSetup() {
         fd.append("file", file);
         const res = await fetch("/api/onboarding/resume", {
           method: "POST",
+          headers: { 'x-request-id': createRequestId('resume-upload') },
           body: fd,
         });
         const data = await res.json();
@@ -131,7 +132,11 @@ export default function PracticeSetup() {
           setHasProfile(true);
           if (typeof window !== 'undefined') {
             localStorage.setItem(PROFILE_KEY, JSON.stringify(normalized));
+            if (normalized.resumeId) localStorage.setItem('cadence_active_resume_id', normalized.resumeId);
             localStorage.setItem('cadence_profile_source', data.source || 'ai');
+            sessionStorage.removeItem('cadence_resume_interview_session');
+            sessionStorage.removeItem('cadence_active_interview_session');
+            sessionStorage.removeItem('cadence_prepared_opening_question');
           }
         }
       } catch (err) {
@@ -179,7 +184,7 @@ export default function PracticeSetup() {
     try {
       const response = await fetch('/api/interviewer/next-question', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-request-id': createRequestId('opening-question') },
         body: JSON.stringify({ sessionState }),
       });
       if (response.ok) {
@@ -210,285 +215,307 @@ export default function PracticeSetup() {
   const candidateDisplayName = activeProfile.name || activeProfile.basics?.fullName || "Candidate";
 
   return (
-    <div className="mx-auto max-w-5xl space-y-10 pb-16" data-testid="practice-setup-page">
-      {/* Page Title */}
+    <div className="space-y-8 pb-16" data-testid="practice-setup-page">
+      {/* 1. TOP HEADER STRIP */}
       <Reveal>
-        <div className="border-b-3 border-line pb-6">
-          <div className="inline-flex items-center gap-2 border-2 border-line bg-[#C7FF2F] px-2.5 py-0.5 font-mono text-xs font-bold uppercase text-ink shadow-[2px_2px_0_#111111]">
-            <span className="h-2 w-2 bg-ink" />
-            PRACTICE ARENA // CONFIGURATION
+        <div className="border-b-3 border-line pb-5 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+          <div>
+            <div className="inline-flex items-center gap-2 border-2 border-line bg-[#C7FF2F] px-2.5 py-0.5 font-mono text-xs font-bold uppercase text-ink shadow-[2px_2px_0_#111111]">
+              <span className="h-2 w-2 bg-ink" />
+              PREPPILOT_ // MISSION CALIBRATION DECK
+            </div>
+            <h1 className="mt-2 font-mono text-3xl sm:text-5xl font-black uppercase tracking-tight text-ink">
+              STAGE YOUR FLIGHT.
+            </h1>
+            <p className="mt-1 font-mono text-xs text-mut uppercase tracking-wider">
+              CONFIGURE YOUR TARGET OBJECTIVE · CALIBRATE SENIORITY · INITIALIZE PROBES
+            </p>
           </div>
-          <h1 className="mt-3 font-display text-4xl sm:text-6xl font-extrabold uppercase leading-[0.95] text-ink">
-            INTERVIEW WITH AN AI THAT HAS <br />
-            <span className="bg-ink text-[#C7FF2F] px-2 py-0.5 inline-block shadow-[4px_4px_0_#127533] mt-1">
-              READ YOUR RESUME.
-            </span>
-          </h1>
-          <p className="mt-4 max-w-2xl font-sans text-sm sm:text-base leading-relaxed text-ink2 font-medium">
-            Your interview is fully personalized using your actual companies, stack, projects, and metrics.
-            The AI Interviewer probes claims, tests trade-offs, and follows up adaptively.
-          </p>
+
+          <div className="flex items-center gap-2 font-mono text-xs font-bold bg-white border-2 border-line p-2 shadow-[2px_2px_0_#111111] shrink-0">
+            <span className="h-2 w-2 rounded-full bg-[#127533] animate-pulse" />
+            <span className="text-ink">STATUS: READY TO ARM</span>
+          </div>
         </div>
       </Reveal>
 
-      {/* Resume Grounding Card */}
-      {hasProfile ? (
-        <Reveal delay={0.03}>
-          <div className="border-3 border-line bg-white p-6 sm:p-8 shadow-[6px_6px_0_#111111]" data-testid="resume-intelligence-card">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between border-b-2 border-line pb-4">
-              <div className="flex items-start gap-3.5">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center border-2 border-line bg-[#C7FF2F] text-ink shadow-[2px_2px_0_#111111]">
-                  <Check className="h-5 w-5 stroke-[3]" />
-                </span>
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="font-display text-2xl font-bold uppercase text-ink">Resume Intelligence</h2>
-                    <span className="border-2 border-line bg-[#C7FF2F] px-2 py-0.5 font-mono text-[10px] font-bold uppercase text-ink">
-                      VERIFIED RESUME
+      {/* 2. ASYMMETRIC TWO-COLUMN STAGING WORKBENCH */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        {/* LEFT COLUMN: THE CONFIGURATION WORKBENCH (7 cols) */}
+        <div className="lg:col-span-7 space-y-7">
+          {/* Career Dossier Box */}
+          {hasProfile ? (
+            <Reveal delay={0.02}>
+              <div className="border-3 border-line bg-white p-5 sm:p-6 shadow-[5px_5px_0_#111111]" data-testid="resume-intelligence-card">
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 border-b-2 border-line pb-3">
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center border-2 border-line bg-[#C7FF2F] text-ink shadow-[2px_2px_0_#111111]">
+                      <Check className="h-5 w-5 stroke-[3]" />
                     </span>
-                    <span className="border-2 border-line bg-paper px-2 py-0.5 font-mono text-[10px] font-bold text-ink">
-                      {activeEvidence.length} EVIDENCE NODES
-                    </span>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h2 className="font-mono text-base font-black uppercase text-ink">CAREER DOSSIER VAULT</h2>
+                        <span className="bg-[#C7FF2F] border border-line px-1.5 py-0.2 font-mono text-[9px] font-black uppercase text-ink">
+                          ● GROUNDED
+                        </span>
+                      </div>
+                      <p className="font-mono text-xs text-mut mt-0.5">
+                        PILOT: <strong className="text-ink font-bold">{candidateDisplayName}</strong> · <span className="bg-paper px-1 border border-line">{activeEvidence.length} NODES</span>
+                      </p>
+                    </div>
                   </div>
-                  <p className="mt-1 font-sans text-xs text-ink2 font-medium">
-                    Grounding active for <strong className="text-ink">{candidateDisplayName}</strong>. Questions will target your verified accomplishments.
-                  </p>
+
+                  <div className="flex items-center gap-2 font-mono text-xs font-bold">
+                    <button
+                      onClick={() => setShowUploadArea(!showUploadArea)}
+                      className="border border-line bg-paper px-2 py-1 text-ink hover:bg-[#C7FF2F] transition-colors cursor-pointer text-[11px]"
+                    >
+                      {showUploadArea ? "[ CLOSE ]" : "[ UPDATE DOSSIER ]"}
+                    </button>
+                    <button
+                      onClick={handleResetCleanState}
+                      className="border border-line bg-paper px-2 py-1 text-[#FF5C35] hover:bg-[#FFEFEA] transition-colors cursor-pointer text-[11px]"
+                    >
+                      [ PURGE ]
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-4 space-y-2 font-mono">
+                  <span className="text-[10px] uppercase font-bold text-mut tracking-wider">[ VERIFIED CAREER MILESTONES ]</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {activeEvidence.filter(item => item.category === 'experience' || item.category === 'venture').slice(0, 4).map((item) => (
+                      <span key={item.id} className="border border-line bg-paper px-2 py-1 text-[11px] font-bold text-ink">
+                        <span>{item.topic}</span>{item.role ? <span className="ml-1">// {item.role}</span> : ''}{item.organization ? <span className="ml-1 text-mut">// {item.organization}</span> : ''}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </Reveal>
+          ) : (
+            <Reveal delay={0.02}>
+              <div className="border-3 border-line bg-white p-5 sm:p-6 shadow-[5px_5px_0_#111111]" data-testid="resume-onboarding-card">
+                <div className="flex items-start gap-4">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center border-2 border-line bg-[#C7FF2F] text-ink shadow-[2px_2px_0_#111111]">
+                    <FileText className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-[#127533] bg-[#E2F8E7] px-2 py-0.5 border border-line">
+                      [ DOSSIER MISSING ]
+                    </span>
+                    <h3 className="mt-1 font-mono text-lg font-black uppercase text-ink">
+                      INGEST RESUME FOR ZERO-HALLUCINATION PROBING
+                    </h3>
+                    <p className="mt-1 font-sans text-xs text-ink2">
+                      Upload your real background to calibrate trade-offs, architecture decisions, and metrics.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </Reveal>
+          )}
+
+          {/* Upload Dropzone */}
+          {(!hasProfile || showUploadArea) && (
+            <Reveal delay={0.04}>
+              <div className="border-3 border-line bg-white p-5 shadow-[4px_4px_0_#111111] space-y-3 font-mono">
+                <div className="flex items-center justify-between border-b border-line pb-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-ink">[ RESUME INGESTION PROTOCOL ]</span>
+                  <span className="text-[10px] text-mut uppercase">PDF / DOCX / TEXT</span>
+                </div>
+                <label className="flex flex-col items-center justify-center p-5 border-2 border-dashed border-line bg-paper hover:bg-[#C7FF2F]/30 transition-all cursor-pointer">
+                  <Upload className="h-5 w-5 text-ink mb-1.5" />
+                  <span className="text-xs font-bold text-ink uppercase text-center">
+                    {fileName || "DRAG CAREER DOSSIER HERE OR BROWSE"}
+                  </span>
+                  <input type="file" accept=".txt,.pdf,.docx,.md" onChange={handleFileUpload} className="hidden" />
+                </label>
+                <textarea
+                  rows={2}
+                  value={resumeText}
+                  onChange={(e) => setResumeText(e.target.value)}
+                  placeholder="Or paste resume text directly here for instant ingestion…"
+                  className="input-warm text-xs resize-none"
+                />
+              </div>
+            </Reveal>
+          )}
+
+          {/* Section 01: Target Role Selector */}
+          <Reveal delay={0.06}>
+            <section className="space-y-3">
+              <div className="flex items-center justify-between border-b-2 border-line pb-1.5 font-mono">
+                <span className="text-xs font-black uppercase tracking-wider text-ink">[ 01 · TARGET ROLE SPECIFICATION ]</span>
+                <span className="text-[10px] text-mut uppercase">SETS RUBRICS</span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5" data-testid="practice-role-select">
+                {ROLES.map((r) => {
+                  const active = role === r.id;
+                  return (
+                    <button
+                      key={r.id}
+                      onClick={() => setRole(r.id)}
+                      className={`border-2 p-2.5 text-left transition-all cursor-pointer font-mono ${
+                        active
+                          ? "border-line bg-[#C7FF2F] text-ink shadow-[3px_3px_0_#111111] translate-x-0.5"
+                          : "border-line bg-white text-ink hover:bg-paper"
+                      }`}
+                    >
+                      <p className="text-xs font-black uppercase truncate">{r.label}</p>
+                      <p className="mt-0.5 text-[9px] uppercase text-mut font-bold">{r.tag}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          </Reveal>
+
+          {/* Section 02: 6 Round Mission Objectives */}
+          <Reveal delay={0.08}>
+            <section className="space-y-3">
+              <div className="flex items-center justify-between border-b-2 border-line pb-1.5 font-mono">
+                <span className="text-xs font-black uppercase tracking-wider text-ink">[ 02 · MISSION OBJECTIVE SELECTOR ]</span>
+                <span className="text-[10px] text-mut uppercase">6 SPECIALIZED DRILLS</span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5" data-testid="practice-category-select">
+                {Object.values(INTERVIEW_ROUNDS).map((r) => {
+                  const active = selectedRoundKey === r.key;
+                  return (
+                    <button
+                      key={r.key}
+                      onClick={() => setSelectedRoundKey(r.key)}
+                      className={`border-3 p-4 text-left transition-all cursor-pointer flex flex-col justify-between ${
+                        active
+                          ? "border-line bg-[#C7FF2F] text-ink shadow-[4px_4px_0_#111111]"
+                          : "border-line bg-white text-ink hover:bg-paper"
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center justify-between font-mono text-[9px] font-bold uppercase border-b border-line pb-1.5">
+                          <span className="bg-paper px-1 border border-line">{r.coreQuestionCount} QUESTIONS</span>
+                          <span>{r.estimatedDuration}</span>
+                        </div>
+                        <h3 className="font-mono text-sm font-black uppercase text-ink mt-2">{r.name}</h3>
+                        <p className="mt-1 text-xs leading-relaxed text-ink2 font-sans font-medium line-clamp-2">{r.description}</p>
+                      </div>
+                      <div className="mt-3 pt-2 border-t border-line font-mono text-[9px] font-bold uppercase tracking-wider text-mut flex items-center justify-between">
+                        <span>OBJECTIVE</span>
+                        <span className={`px-1 border ${active ? 'bg-ink text-[#C7FF2F] border-ink' : 'border-line bg-paper text-ink'}`}>
+                          {active ? "● SELECTED" : "SELECT"}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          </Reveal>
+
+          {/* Section 03: Difficulty Grading */}
+          <Reveal delay={0.1}>
+            <section className="space-y-3">
+              <div className="flex items-center justify-between border-b-2 border-line pb-1.5 font-mono">
+                <span className="text-xs font-black uppercase tracking-wider text-ink">[ 03 · SENIORITY RIGOR THRESHOLD ]</span>
+                <span className="text-[10px] text-mut uppercase">GRADING INTENSITY</span>
+              </div>
+              <div className="flex flex-wrap gap-2.5 font-mono">
+                {DIFFICULTIES.map((d) => (
+                  <button
+                    key={d}
+                    onClick={() => setDifficulty(d)}
+                    data-testid={`chip-${d.toLowerCase()}`}
+                    className={`border-2 px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                      difficulty === d
+                        ? "border-line bg-[#111111] text-[#C7FF2F] shadow-[3px_3px_0_#C7FF2F]"
+                        : "border-line bg-white text-ink hover:bg-paper"
+                    }`}
+                  >
+                    {d}
+                  </button>
+                ))}
+              </div>
+            </section>
+          </Reveal>
+        </div>
+
+        {/* RIGHT COLUMN: STICKY PRE-FLIGHT BRIEFING MANIFEST & LAUNCH COCKPIT (5 cols) */}
+        <div className="lg:col-span-5 sticky top-20">
+          <Reveal delay={0.12}>
+            <div className="border-3 border-line bg-white p-6 shadow-[7px_7px_0_#111111] space-y-6">
+              <div className="border-b-2 border-line pb-4">
+                <div className="flex items-center justify-between font-mono text-[10px] font-black uppercase text-mut">
+                  <span>FLIGHT MANIFEST</span>
+                  <span className="bg-[#C7FF2F] px-1.5 py-0.2 border border-line text-ink">CONFIRMED</span>
+                </div>
+                <h3 className="font-mono text-2xl font-black uppercase text-ink mt-2">
+                  {currentRound.name.toUpperCase()}
+                </h3>
+                <p className="font-mono text-xs text-mut mt-0.5">
+                  ESTIMATED DURATION: <strong className="text-ink">{currentRound.estimatedDuration}</strong>
+                </p>
+              </div>
+
+              {/* Mission Parameters Checklist */}
+              <div className="space-y-2 font-mono text-xs">
+                <p className="text-[10px] font-bold uppercase text-mut">[ FLIGHT VERIFICATION CHECKLIST ]</p>
+                <div className="border-2 border-line bg-paper p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-ink">CAREER DOSSIER:</span>
+                    <span className="font-bold text-[#127533]">{hasProfile ? `GROUNDED (${activeEvidence.length} NODES)` : 'GENERIC MODE'}</span>
+                  </div>
+                  <div className="flex items-center justify-between border-t border-line/50 pt-1.5">
+                    <span className="text-ink">ROLE EXPECTATION:</span>
+                    <span className="font-bold text-ink bg-white px-1 border border-line">{role.toUpperCase()}</span>
+                  </div>
+                  <div className="flex items-center justify-between border-t border-line/50 pt-1.5">
+                    <span className="text-ink">SENIORITY BAR:</span>
+                    <span className="font-bold text-ink bg-white px-1 border border-line">{difficulty.toUpperCase()}</span>
+                  </div>
+                  <div className="flex items-center justify-between border-t border-line/50 pt-1.5">
+                    <span className="text-ink">5 SPECIALIST AGENTS:</span>
+                    <span className="font-bold text-[#127533]">ONLINE</span>
+                  </div>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 font-mono text-xs font-bold">
-                <button
-                  onClick={() => setShowUploadArea(!showUploadArea)}
-                  className="border border-line bg-paper px-2.5 py-1 text-ink hover:bg-[#C7FF2F] transition-colors cursor-pointer"
-                >
-                  {showUploadArea ? "[ HIDE UPDATER ]" : "[ UPDATE RESUME ]"}
-                </button>
-                <button
-                  onClick={handleResetCleanState}
-                  className="border border-line bg-paper px-2.5 py-1 text-[#FF5C35] hover:bg-[#FFEFEA] transition-colors cursor-pointer"
-                >
-                  [ CLEAR ]
-                </button>
+              {/* What will be probed briefing */}
+              <div className="border-2 border-line bg-paper p-4 font-mono">
+                <p className="text-[10px] font-bold uppercase text-ink">[ DRILL FOCUS AREA ]</p>
+                <p className="mt-1 text-xs font-sans text-ink2 leading-relaxed font-medium">
+                  {currentRound.description}
+                </p>
               </div>
-            </div>
 
-            <div className="mt-5 space-y-3 font-mono">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] uppercase font-bold text-mut tracking-wider">[ EXTRACTED EXPERIENCES ]</span>
-                <span className="text-[10px] text-[#127533] font-bold flex items-center gap-1">
-                  <ShieldCheck className="h-3.5 w-3.5" /> ZERO-HALLUCINATION GROUNDING
-                </span>
+              {/* Input Modality Notice */}
+              <div className="flex items-center gap-3 border-2 border-line bg-white p-3 font-mono">
+                <Mic className="h-5 w-5 text-ink shrink-0" />
+                <div className="text-xs">
+                  <p className="font-bold text-ink uppercase">VOICE OR KEYBOARD INPUT</p>
+                  <p className="text-[10px] text-mut uppercase">Multimodal speech or text response</p>
+                </div>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {activeEvidence.filter(item => item.category === 'experience' || item.category === 'venture').slice(0, 4).map((item) => (
-                  <span key={item.id} className="border-2 border-line bg-paper px-3 py-1.5 text-xs font-bold text-ink shadow-[2px_2px_0_#111111]">
-                    <strong>{item.topic}</strong> {item.role ? `// ${item.role}` : ''}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
-        </Reveal>
-      ) : (
-        <Reveal delay={0.03}>
-          <div className="border-3 border-line bg-white p-6 sm:p-8 shadow-[6px_6px_0_#111111]" data-testid="resume-onboarding-card">
-            <div className="flex items-start gap-4">
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center border-2 border-line bg-[#C7FF2F] text-ink shadow-[3px_3px_0_#111111]">
-                <FileText className="h-6 w-6" />
-              </span>
-              <div>
-                <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-[#127533] bg-[#E2F8E7] px-2 py-0.5 border border-line">
-                  [ STEP 01 // RESUME MISSING ]
-                </span>
-                <h3 className="mt-2 font-display text-2xl font-bold uppercase text-ink">
-                  Add your resume for grounded practice questions.
-                </h3>
-                <p className="mt-1 font-sans text-xs sm:text-sm leading-relaxed text-ink2 font-medium">
-                  We'll parse your real stack, systems, and metrics to grill your actual achievements.
+
+              {/* The Master Launch Button */}
+              <div className="pt-2 font-mono">
+                <button
+                  data-testid="practice-start-btn"
+                  onClick={startSession}
+                  disabled={isLaunchingInterview}
+                  className="btn-terra !px-6 !py-4 w-full font-bold !text-sm shadow-[5px_5px_0_#111111] cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <PlayCircle className="h-4 w-4" />
+                  <span>{isLaunchingInterview ? 'INITIALIZING INTERVIEW COCKPIT…' : 'INITIALIZE FLIGHT MISSION →'}</span>
+                </button>
+                <p className="mt-2 text-[10px] text-center text-mut uppercase font-bold">
+                  TELEMETRY RECORDING READY ON LAUNCH
                 </p>
               </div>
             </div>
-          </div>
-        </Reveal>
-      )}
-
-      {/* Upload Box */}
-      {(!hasProfile || showUploadArea) && (
-        <Reveal delay={0.05}>
-          <div className="border-3 border-line bg-white p-6 sm:p-7 shadow-[5px_5px_0_#111111] space-y-4 font-mono">
-            <div className="flex items-center justify-between border-b-2 border-line pb-2.5">
-              <span className="text-xs font-bold uppercase tracking-wider text-ink">[ RESUME INGESTION ]</span>
-              <span className="text-[10px] text-mut uppercase">PDF // DOCX // TEXT</span>
-            </div>
-            <label className="flex flex-col items-center justify-center p-6 border-3 border-dashed border-line bg-paper hover:bg-[#C7FF2F]/30 transition-all cursor-pointer">
-              <Upload className="h-6 w-6 text-ink mb-2" />
-              <span className="text-xs font-bold text-ink uppercase">
-                {fileName || "DRAG RESUME FILE HERE OR CLICK TO BROWSE"}
-              </span>
-              <input type="file" accept=".txt,.pdf,.docx,.md" onChange={handleFileUpload} className="hidden" />
-            </label>
-            <textarea
-              rows={3}
-              value={resumeText}
-              onChange={(e) => setResumeText(e.target.value)}
-              placeholder="Or paste resume plain text directly here…"
-              className="input-warm text-xs resize-none"
-            />
-          </div>
-        </Reveal>
-      )}
-
-      {/* Section 01: Target Role */}
-      <Reveal delay={0.07}>
-        <section>
-          <div className="flex items-center justify-between mb-3 border-b-2 border-line pb-2 font-mono">
-            <span className="text-xs font-bold uppercase tracking-wider text-ink">[ 01 · TARGET ROLE SPECIFICATION ]</span>
-            <span className="text-[10px] text-mut uppercase">CALIBRATES RUBRICS</span>
-          </div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5" data-testid="practice-role-select">
-            {ROLES.map((r) => {
-              const active = role === r.id;
-              return (
-                <button
-                  key={r.id}
-                  onClick={() => setRole(r.id)}
-                  className={`border-2 p-3 text-left transition-all duration-100 cursor-pointer font-mono ${
-                    active
-                      ? "border-line bg-[#C7FF2F] text-ink shadow-[3px_3px_0_#111111] translate-x-0.5"
-                      : "border-line bg-white text-ink hover:bg-paper"
-                  }`}
-                >
-                  <p className="text-xs font-bold uppercase tracking-tight truncate">{r.label}</p>
-                  <p className="mt-1 text-[9px] uppercase tracking-wider text-mut font-bold">{r.tag}</p>
-                </button>
-              );
-            })}
-          </div>
-        </section>
-      </Reveal>
-
-      {/* Section 02: Interview Rounds */}
-      <Reveal delay={0.09}>
-        <section>
-          <div className="flex items-center justify-between mb-3 border-b-2 border-line pb-2 font-mono">
-            <span className="text-xs font-bold uppercase tracking-wider text-ink">[ 02 · SELECT INTERVIEW ROUND ]</span>
-            <span className="text-[10px] text-mut uppercase">6 SPECIALIZED MODES</span>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="practice-category-select">
-            {Object.values(INTERVIEW_ROUNDS).map((r) => {
-              const active = selectedRoundKey === r.key;
-              return (
-                <button
-                  key={r.key}
-                  onClick={() => setSelectedRoundKey(r.key)}
-                  className={`border-3 p-5 text-left transition-all duration-100 cursor-pointer flex flex-col justify-between ${
-                    active
-                      ? "border-line bg-[#C7FF2F] text-ink shadow-[5px_5px_0_#111111] translate-x-1"
-                      : "border-line bg-white text-ink hover:bg-paper"
-                  }`}
-                >
-                  <div>
-                    <div className="flex items-center justify-between font-mono text-[10px] font-bold uppercase border-b-2 border-line pb-2">
-                      <span>{r.coreQuestionCount} QUESTIONS</span>
-                      <span className="bg-paper px-1.5 py-0.2 border border-line text-ink">{r.estimatedDuration}</span>
-                    </div>
-                    <h3 className="font-display text-lg font-bold uppercase tracking-tight text-ink mt-3">{r.name}</h3>
-                    <p className="mt-2 text-xs leading-relaxed text-ink2 font-medium font-sans line-clamp-2">{r.description}</p>
-                  </div>
-                  <div className="mt-4 pt-3 border-t border-line font-mono text-[9px] font-bold uppercase tracking-wider text-mut">
-                    MODE // {active ? "SELECTED" : "AVAILABLE"}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </section>
-      </Reveal>
-
-      {/* Section 03: Difficulty */}
-      <Reveal delay={0.11}>
-        <section>
-          <div className="flex items-center justify-between mb-3 border-b-2 border-line pb-2 font-mono">
-            <span className="text-xs font-bold uppercase tracking-wider text-ink">[ 03 · SENIORITY CALIBRATION ]</span>
-            <span className="text-[10px] text-mut uppercase">DIFFICULTY GRADING</span>
-          </div>
-          <div className="flex flex-wrap gap-2.5 font-mono">
-            {DIFFICULTIES.map((d) => (
-              <button
-                key={d}
-                onClick={() => setDifficulty(d)}
-                data-testid={`chip-${d.toLowerCase()}`}
-                className={`border-2 px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
-                  difficulty === d
-                    ? "border-line bg-[#111111] text-[#C7FF2F] shadow-[3px_3px_0_#C7FF2F]"
-                    : "border-line bg-white text-ink hover:bg-paper"
-                }`}
-              >
-                {d}
-              </button>
-            ))}
-          </div>
-        </section>
-      </Reveal>
-
-      {/* Confirmation & Launch Screen */}
-      <Reveal delay={0.13}>
-        <div className="border-3 border-line bg-white p-7 sm:p-9 shadow-[8px_8px_0_#111111] space-y-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b-2 border-line pb-6">
-            <div>
-              <span className="border-2 border-line bg-[#C7FF2F] px-3 py-1 font-mono text-xs font-bold uppercase text-ink shadow-[2px_2px_0_#111111]">
-                {currentRound.name.toUpperCase()}
-              </span>
-              <h3 className="font-display text-3xl font-extrabold uppercase text-ink mt-3">
-                {currentRound.coreQuestionCount} Core Questions + Adaptive Probing
-              </h3>
-              <p className="font-mono text-xs text-mut mt-1">
-                DURATION: <strong className="text-ink">{currentRound.estimatedDuration}</strong> · CANDIDATE: <strong className="text-ink">{candidateDisplayName}</strong>
-              </p>
-            </div>
-
-            <div className="flex items-center gap-3 border-2 border-line bg-paper p-3 shadow-[2px_2px_0_#111111] font-mono">
-              <Mic className="h-5 w-5 text-ink" />
-              <div className="text-xs">
-                <p className="font-bold text-ink uppercase">VOICE OR TEXT</p>
-                <p className="text-[10px] text-mut uppercase">SPEAK OR TYPE</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 font-mono text-xs">
-            <div className="border-2 border-line bg-paper p-3.5 shadow-[2px_2px_0_#111111]">
-              <p className="font-bold uppercase text-ink">[ RESUME GROUNDED ]</p>
-              <p className="mt-1 text-[11px] text-mut font-sans font-medium">
-                {activeEvidence.length > 0 ? `Probing ${activeEvidence.length} verified project nodes` : "Tested against real tech background"}
-              </p>
-            </div>
-            <div className="border-2 border-line bg-paper p-3.5 shadow-[2px_2px_0_#111111]">
-              <p className="font-bold uppercase text-ink">[ ROLE TARGET ]</p>
-              <p className="mt-1 text-[11px] text-mut font-sans font-medium">Calibrated for {role.toUpperCase()} expectations</p>
-            </div>
-            <div className="border-2 border-line bg-paper p-3.5 shadow-[2px_2px_0_#111111]">
-              <p className="font-bold uppercase text-ink">[ ADAPTIVE FOLLOW-UPS ]</p>
-              <p className="mt-1 text-[11px] text-mut font-sans font-medium">Specialist agents evaluate and probe weaknesses</p>
-            </div>
-          </div>
-
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2 font-mono">
-            <p className="text-xs text-mut uppercase font-bold">
-              AI INTERVIEWER IS INITIALIZED AND READY TO OPEN THE ROOM.
-            </p>
-            <button
-              data-testid="practice-start-btn"
-              onClick={startSession}
-              disabled={isLaunchingInterview}
-              className="btn-terra !px-8 !py-4 w-full sm:w-auto font-bold !text-sm shadow-[4px_4px_0_#111111] cursor-pointer"
-            >
-              <span>{isLaunchingInterview ? 'INITIALIZING INTERVIEW COCKPIT…' : 'ENTER INTERVIEW ROOM →'}</span>
-            </button>
-          </div>
+          </Reveal>
         </div>
-      </Reveal>
+      </div>
     </div>
   );
 }

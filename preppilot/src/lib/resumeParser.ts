@@ -30,6 +30,59 @@ export const SAMPLE_PRESETS: {
   jd: JobDescription;
 }[] = [];
 
+const DATE_TOKEN = '(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\\s+\\d{4}|(?:19|20)\\d{2}';
+const DATE_RANGE_RE = new RegExp(`(${DATE_TOKEN})\\s*(?:[-–—]|//|to)\\s*((${DATE_TOKEN})|Present|Current)`, 'i');
+
+const EXPERIENCE_DATE_RANGE_RE = /((?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{4}|(?:19|20)\d{2})\s*(?:-|\u2013|\u2014|\/\/|to)\s*((?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{4}|(?:19|20)\d{2}|Present|Current)/i;
+
+function splitExperienceDates(value: string) {
+  const match = value.match(EXPERIENCE_DATE_RANGE_RE) || value.match(new RegExp(`(${DATE_TOKEN})\\s+(Present|Current)`, 'i'));
+  if (!match) return { startDate: '', endDate: '', duration: '', isCurrent: false };
+  const startDate = match[1].trim();
+  const endDate = match[2].trim();
+  return { startDate, endDate, duration: `${startDate} – ${endDate}`, isCurrent: /present|current/i.test(endDate) };
+}
+
+function looksLikeDate(value: string) {
+  return EXPERIENCE_DATE_RANGE_RE.test(value.trim()) || new RegExp(`^${DATE_TOKEN}$`, 'i').test(value.trim()) || /^(present|current)$/i.test(value.trim());
+}
+
+function looksLikeExperienceLabel(value: string) {
+  return /^(company|role|title|experience|professional experience|employment history)$/i.test(value.trim());
+}
+
+function looksLikeLocation(value: string) {
+  const clean = value.trim();
+  return clean.length >= 2 && clean.length <= 60 && !looksLikeDate(clean) &&
+    (/^(remote|hybrid|on[- ]site)$/i.test(clean) || /^[A-Za-z .'-]+,\s*[A-Za-z .'-]+$/.test(clean));
+}
+
+function splitRoleLocation(value: string) {
+  const pipeParts = value.split('|').map(part => part.trim()).filter(Boolean);
+  if (pipeParts.length >= 2 && isRoleLineForExperience(pipeParts[0]) && looksLikeLocation(pipeParts[1])) {
+    return { role: pipeParts[0], location: pipeParts[1] };
+  }
+  const clean = pipeParts[0] || value.replace(/\s+/g, ' ').trim();
+  // A comma-separated trailing segment is treated as location only when the
+  // left side is clearly a job title. This avoids splitting company names.
+  const match = clean.match(/^(.+?)\s+([A-Za-z .'-]+,\s*[A-Za-z .'-]+)$/);
+  if (match && isRoleLineForExperience(match[1]) && looksLikeLocation(match[2])) {
+    return { role: match[1].trim(), location: match[2].trim() };
+  }
+  return { role: clean, location: '' };
+}
+
+function isRoleLineForExperience(value: string) {
+  const clean = value.trim();
+  return clean.length <= 80 && !looksLikeDate(clean) &&
+    /\b(engineer|developer|lead|founder|co-founder|manager|architect|analyst|intern|internship|director|consultant|specialist|officer|head|associate|designer|programmer|creator|owner|trainee|scientist|administrator|executive)\b/i.test(clean);
+}
+
+function splitEducationDates(value: string) {
+  const match = value.match(/((?:19|20)\d{2})\s*(?:-|\u2013|\u2014|to|â€“|â€”)+\s*((?:19|20)\d{2}|Present|Current)/i);
+  return match ? { startDate: match[1], endDate: match[2], year: `${match[1]} – ${match[2]}` } : { startDate: '', endDate: '', year: value };
+}
+
 export function extractSkillsFromText(text: string): string[] {
   const lower = text.toLowerCase();
   return TECH_SKILLS_DICTIONARY.filter(skill => {
@@ -115,6 +168,7 @@ export function normalizeResumeProfile(rawParsed: any, userAccount?: { name?: st
       experience: [],
       technical_skills: [],
       soft_skills: [],
+      parserSource: 'heuristic',
     };
   }
 
@@ -165,6 +219,7 @@ export function normalizeResumeProfile(rawParsed: any, userAccount?: { name?: st
       deg = deg ? `${deg} in ${field}` : field;
     }
     const year = (it.year || it.duration || it.years || (it.startDate && it.endDate ? `${it.startDate} – ${it.endDate}` : it.endDate || '')).trim();
+    const parsedDates = splitEducationDates(year);
     const grade = (it.grade || it.cgpa || it.percentage || '').trim();
     const achievements = Array.isArray(it.achievements) ? it.achievements : [];
     return {
@@ -172,8 +227,9 @@ export function normalizeResumeProfile(rawParsed: any, userAccount?: { name?: st
       degree: deg || 'Degree',
       field,
       year: year || '',
-      startDate: it.startDate || '',
-      endDate: it.endDate || '',
+      startDate: it.startDate || it.start_date || parsedDates.startDate,
+      endDate: it.endDate || it.end_date || parsedDates.endDate,
+      location: it.location || '',
       grade,
       achievements,
     };
@@ -184,12 +240,14 @@ export function normalizeResumeProfile(rawParsed: any, userAccount?: { name?: st
   const rawInternships = rawParsed.internships || rawParsed.internshipExperience || [];
 
   const allExp = (Array.isArray(rawExp) ? rawExp : []).map((it: any) => {
-    if (typeof it === 'string') return { company: it, role: 'Software Engineer', duration: '', summary: '' };
+    if (typeof it === 'string') return { company: it, role: '', duration: '', summary: '' };
     const comp = (it.company || it.organization || it.employer || '').trim();
     const role = (it.role || it.title || it.jobTitle || it.position || '').trim();
-    const duration = (it.duration || it.dates || (it.startDate && it.endDate ? `${it.startDate} – ${it.endDate}` : it.endDate || '')).trim();
+    const startDate = it.startDate || it.start_date || '';
+    const endDate = it.endDate || it.end_date || '';
+    const duration = (it.duration || it.dates || (startDate && endDate ? `${startDate} – ${endDate}` : endDate || '')).trim();
     let sum = (it.summary || it.description || '').trim();
-    const responsibilities = Array.isArray(it.responsibilities) ? it.responsibilities : [];
+    const responsibilities = Array.isArray(it.responsibilities) ? it.responsibilities.filter(Boolean) : [];
     if (!sum && responsibilities.length > 0) {
       sum = responsibilities.join(' ').trim();
     }
@@ -198,21 +256,26 @@ export function normalizeResumeProfile(rawParsed: any, userAccount?: { name?: st
     const metrics = Array.isArray(it.metrics) ? it.metrics : [];
 
     return {
-      company: comp || 'Company',
-      role: role || 'Engineer',
-      startDate: it.startDate || '',
-      endDate: it.endDate || '',
+      company: comp,
+      role,
+      startDate,
+      endDate,
       duration: duration || '',
       summary: sum,
       responsibilities,
+      isCurrent: Boolean(it.isCurrent ?? it.is_current ?? /present|current/i.test(endDate || duration)),
       achievements,
       technologies,
       metrics,
+      location: (it.location || '').trim(),
+      sectionSource: it.sectionSource || 'professional_experience',
+      sourceText: it.sourceText || [comp, role, duration, sum].filter(Boolean).join(' | '),
+      confidence: typeof it.confidence === 'number' ? it.confidence : 1,
     };
   }).filter((e: any) => e.company || e.role);
 
   const directInternships = (Array.isArray(rawInternships) ? rawInternships : []).map((it: any) => {
-    if (typeof it === 'string') return { company: it, role: 'Intern', duration: '', summary: '' };
+    if (typeof it === 'string') return { company: it, role: '', duration: '', summary: '' };
     const comp = (it.company || it.organization || '').trim();
     const role = (it.role || it.title || 'Intern').trim();
     const duration = (it.duration || it.dates || '').trim();
@@ -222,14 +285,21 @@ export function normalizeResumeProfile(rawParsed: any, userAccount?: { name?: st
       sum = responsibilities.join(' ').trim();
     }
     return {
-      company: comp || 'Company',
+      company: comp,
       role,
       duration,
       summary: sum,
       responsibilities,
+      startDate: it.startDate || it.start_date || '',
+      endDate: it.endDate || it.end_date || '',
+      isCurrent: Boolean(it.isCurrent ?? it.is_current ?? /present|current/i.test(it.endDate || it.end_date || duration)),
       achievements: Array.isArray(it.achievements) ? it.achievements : [],
       technologies: Array.isArray(it.technologies) ? it.technologies : [],
       metrics: Array.isArray(it.metrics) ? it.metrics : [],
+      location: (it.location || '').trim(),
+      sectionSource: it.sectionSource || 'internships',
+      sourceText: it.sourceText || [comp, role, duration, sum].filter(Boolean).join(' | '),
+      confidence: typeof it.confidence === 'number' ? it.confidence : 1,
     };
   }).filter((e: any) => e.company || e.role);
 
@@ -238,17 +308,15 @@ export function normalizeResumeProfile(rawParsed: any, userAccount?: { name?: st
   const internships = [...directInternships];
 
   allExp.forEach((item: any) => {
-    if (internships.length === 0 && /\b(intern|internship)\b/i.test(item.role)) {
-      internships.push(item);
-    } else {
-      workExperience.push(item);
-    }
+    // Preserve the source section. A role containing “Intern” does not mean
+    // the resume's Professional Experience entry belongs in internships.
+    workExperience.push(item);
   });
 
   // 4. Projects
   const rawProjects = rawParsed.projects || rawParsed.keyProjects || [];
   const projects = (Array.isArray(rawProjects) ? rawProjects : []).map((it: any) => {
-    if (typeof it === 'string') return { name: it, summary: '' };
+    if (typeof it === 'string') return { name: it, summary: '', descriptions: [], technologies: [], year: '', sectionSource: 'technical_projects' };
     const name = (it.name || it.title || it.projectName || '').trim();
     let sum = (it.summary || it.description || '').trim();
     if (it.metrics && typeof it.metrics === 'string' && !sum.includes(it.metrics)) {
@@ -258,6 +326,11 @@ export function normalizeResumeProfile(rawParsed: any, userAccount?: { name?: st
       name,
       summary: sum,
       description: it.description || sum,
+      descriptions: Array.isArray(it.descriptions) ? it.descriptions : (sum ? [sum] : []),
+      year: it.year || '',
+      sectionSource: it.sectionSource || 'technical_projects',
+      sourceText: it.sourceText || [name, sum].filter(Boolean).join(' | '),
+      confidence: typeof it.confidence === 'number' ? it.confidence : 1,
       contribution: it.contribution || '',
       technologies: Array.isArray(it.technologies) ? it.technologies : [],
       results: it.results || '',
@@ -490,7 +563,7 @@ export function parseResumeText(rawText: string, fallbackPreset?: any, userAccou
     { key: 'experience', regex: /^(?:work\s+|professional\s+|employment\s+|career\s+)?(?:experience|history|employment)\b/i },
     { key: 'internships', regex: /^(?:internship|internships|internship\s+experience)\b/i },
     { key: 'education', regex: /^(?:education|academic\s+background|academics|qualifications)\b/i },
-    { key: 'projects', regex: /^(?:projects|key\s+projects|personal\s+projects|academic\s+projects)\b/i },
+    { key: 'projects', regex: /^(?:(?:technical|key|personal|academic)\s+)?projects?\b/i },
     { key: 'skills', regex: /^(?:technical\s+|core\s+)?(?:skills|competencies|technologies|tools|expertise)\b/i },
     { key: 'certifications', regex: /^(?:certifications|licenses|credentials|courses)\b/i },
     { key: 'achievements', regex: /^(?:achievements|awards|honors|accomplishments|publications)\b/i },
@@ -545,6 +618,20 @@ export function parseResumeText(rawText: string, fallbackPreset?: any, userAccou
       let deg = '';
       let yr = '';
       let grade = '';
+
+      // Pipe-delimited education rows are already structurally separated.
+      if (line.includes('|')) {
+        const parts = line.split('|').map(p => p.trim()).filter(Boolean);
+        inst = parts[0] || '';
+        deg = parts[1] || '';
+        yr = parts[2] || '';
+        const degreeField = deg.match(/^(.+?)\s+(?:-|\u2013|\u2014|â€“|â€”)+\s+(.+)$/);
+        if (degreeField) deg = degreeField[1].trim();
+        if (/cgpa|gpa|%|grade|marks/i.test(yr)) { grade = yr; yr = ''; }
+        education.push({ institution: inst, degree: deg, field: degreeField ? degreeField[2].trim() : '', year: yr, grade });
+        i++;
+        continue;
+      }
 
       if (line.includes('—') || line.includes(' – ')) {
         const sep = line.includes('—') ? '—' : ' – ';
@@ -613,7 +700,7 @@ export function parseResumeText(rawText: string, fallbackPreset?: any, userAccou
   }
 
   // 5. Parse Work Experience & Internships with state machine
-  const parseExperienceBlocks = (linesList: string[]) => {
+  const parseExperienceBlocksLegacy = (linesList: string[]) => {
     const result: Array<{ company: string; role: string; duration: string; summary: string }> = [];
     let i = 0;
     while (i < linesList.length) {
@@ -733,28 +820,107 @@ export function parseResumeText(rawText: string, fallbackPreset?: any, userAccou
     return result;
   };
 
+  const parseExperienceBlocks = (linesList: string[]) => {
+    if (process.env.NODE_ENV !== 'production') console.log('[ResumeParser] experience_extracted_lines', JSON.stringify(linesList));
+    const result: Array<{ company: string; role: string; location: string; startDate: string; endDate: string; isCurrent: boolean; duration: string; summary: string; responsibilities: string[] }> = [];
+    let i = 0;
+    while (i < linesList.length) {
+      const line = linesList[i].trim();
+      if (!line) { i++; continue; }
+      let company = '';
+      let role = '';
+      let location = '';
+      let dateInfo = { startDate: '', endDate: '', duration: '', isCurrent: false };
+      const bullets: string[] = [];
+      const dateMatch = line.match(EXPERIENCE_DATE_RANGE_RE);
+
+      // PDF columns often flatten to: Company | dates, then role | location.
+      // Dates are extracted first and are never eligible for company/role.
+      if (dateMatch) {
+        dateInfo = splitExperienceDates(dateMatch[0]);
+        const before = line.slice(0, dateMatch.index).replace(/[|,:–—-]+\s*$/, '').trim();
+        const after = line.slice((dateMatch.index || 0) + dateMatch[0].length).replace(/^[|,:–—-]+\s*/, '').trim();
+        if (before && !looksLikeExperienceLabel(before)) company = before;
+        if (looksLikeLocation(after)) location = after;
+        i++;
+      } else if (line.includes('|')) {
+        const parts = line.split('|').map(p => p.trim()).filter(Boolean);
+        const datePart = parts.find(p => looksLikeDate(p));
+        if (datePart) dateInfo = splitExperienceDates(datePart);
+        for (const part of parts.filter(p => p !== datePart)) {
+          if (looksLikeLocation(part)) location = part;
+          else if (!role && isRoleLineForExperience(part)) role = splitRoleLocation(part).role;
+          else if (!company && !looksLikeExperienceLabel(part)) company = part;
+        }
+        i++;
+      } else if (isRoleLineForExperience(line)) {
+        const split = splitRoleLocation(line);
+        role = split.role;
+        location = split.location;
+        i++;
+      } else {
+        company = looksLikeExperienceLabel(line) ? '' : line;
+        i++;
+      }
+
+      // Consume only metadata belonging to this employer.
+      while (i < linesList.length) {
+        const meta = linesList[i].trim();
+        if (!meta) { i++; continue; }
+        if (/^[-*â€¢Â·–—]/.test(meta)) break;
+        if (!dateInfo.startDate && looksLikeDate(meta)) { dateInfo = splitExperienceDates(meta); i++; continue; }
+        if (!role && isRoleLineForExperience(meta)) {
+          const split = splitRoleLocation(meta);
+          role = split.role;
+          if (!location) location = split.location;
+          i++;
+          continue;
+        }
+        if (!location && looksLikeLocation(meta)) { location = meta; i++; continue; }
+        if (company && i + 1 < linesList.length && (isRoleLineForExperience(linesList[i + 1]) || looksLikeDate(linesList[i + 1]))) break;
+        if (!company && !role) { company = meta; i++; continue; }
+        break;
+      }
+
+      while (i < linesList.length) {
+        const item = linesList[i].trim();
+        if (!item) { i++; continue; }
+        const bullet = /^[-*â€¢Â·–—]/.test(item);
+        const nextEntry = !bullet && (Boolean(item.match(EXPERIENCE_DATE_RANGE_RE)) || (i + 1 < linesList.length && (isRoleLineForExperience(linesList[i + 1]) || looksLikeDate(linesList[i + 1]))));
+        if (nextEntry) break;
+        bullets.push(item.replace(/^[-*â€¢Â·–—]\s*/, '').trim());
+        i++;
+      }
+
+      company = company.replace(/^\s*(company|employer)\s*:\s*/i, '').replace(/\s*\([^)]*\).*/g, '').trim();
+      if (company && !looksLikeExperienceLabel(company) && !looksLikeDate(company)) {
+        result.push({ company, role: role && !looksLikeDate(role) ? role : '', location, ...dateInfo, summary: bullets.join(' '), responsibilities: bullets });
+      }
+    }
+    return result;
+  };
+
   const experience = parseExperienceBlocks(sections.experience);
   const internships = parseExperienceBlocks(sections.internships);
 
-  // If internships empty, check experience items with 'intern' explicitly in role (keep Trainee in experience)
-  for (let idx = experience.length - 1; idx >= 0; idx--) {
-    if (/\b(intern|internship)\b/i.test(experience[idx].role)) {
-      internships.push(experience.splice(idx, 1)[0]);
-    }
-  }
+  // Keep entries under the section in which they were found. An internship
+  // listed under PROFESSIONAL EXPERIENCE is still professional experience;
+  // moving it to another array loses the resume's semantic grouping.
 
   // 6. Parse Projects
-  const projects: Array<{ name: string; summary: string }> = [];
+  const projects: Array<{ name: string; summary: string; technologies: string[]; descriptions: string[]; year: string; sectionSource: string }> = [];
   if (sections.projects.length > 0) {
     let curName = '';
     let curBullets: string[] = [];
+    let curTechnologies: string[] = [];
 
     const flushProj = () => {
       if (curName) {
-        projects.push({ name: curName, summary: curBullets.join(' ') });
+        projects.push({ name: curName, summary: curBullets.join(' '), technologies: Array.from(new Set(curTechnologies)), descriptions: [...curBullets], year: '', sectionSource: 'technical_projects' });
       }
       curName = '';
       curBullets = [];
+      curTechnologies = [];
     };
 
     const ACTION_VERBS = /^(?:architected|implemented|built|engineered|co-authored|authored|automated|designed|trained|developed|created|tested|deployed|managed|spearheaded|conducted|analyzed|evaluated|integrated|optimized|directed|owned|fine-tuned)\b/i;
@@ -765,11 +931,15 @@ export function parseResumeText(rawText: string, fallbackPreset?: any, userAccou
       const isTitleLine = !isBullet && !ACTION_VERBS.test(clean) && (
         clean.includes('|') ||
         ((clean.includes('–') || clean.includes(' - ')) && clean.length <= 80) ||
-        (clean.length > 3 && clean.length <= 60 && !clean.endsWith('.'))
+        (clean.length > 3 && clean.length <= 100 && !clean.endsWith('.') && !curName)
       );
       if (isTitleLine) {
         if (curName) flushProj();
-        curName = clean.replace(/[|].*/, '').trim();
+        const parts = clean.split('|').map(p => p.trim()).filter(Boolean);
+        curName = parts[0].trim();
+        if (parts.length > 1) {
+          curTechnologies.push(...parts.slice(1).flatMap(p => p.split(/[,;·]/).map(t => t.trim()).filter(Boolean)));
+        }
       } else {
         curBullets.push(clean.replace(/^[-*•·–]\s*/, '').trim());
       }

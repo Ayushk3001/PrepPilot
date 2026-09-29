@@ -53,6 +53,10 @@ export default function ResumeUpload() {
 
       if (typeof window !== "undefined" && res?.data?.profile) {
         localStorage.setItem("cadence_candidate_profile", JSON.stringify(res.data.profile));
+        if (res.data.profile.resumeId) localStorage.setItem("cadence_active_resume_id", res.data.profile.resumeId);
+        sessionStorage.removeItem("cadence_resume_interview_session");
+        sessionStorage.removeItem("cadence_active_interview_session");
+        sessionStorage.removeItem("cadence_prepared_opening_question");
         localStorage.setItem("cadence_profile_source", res.data.source || "ai");
         if (res.data.diagnostic) {
           localStorage.setItem("cadence_resume_diagnostic", JSON.stringify(res.data.diagnostic));

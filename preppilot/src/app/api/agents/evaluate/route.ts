@@ -4,6 +4,7 @@ import { CandidateProfile, InterviewQuestion, SpeechMetrics } from '@/types/inte
 
 export async function POST(req: NextRequest) {
   try {
+    const requestId = req.headers.get('x-request-id') || `evaluation_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const body = await req.json();
     const {
       candidateProfile,
@@ -40,10 +41,11 @@ export async function POST(req: NextRequest) {
       question,
       candidateResponse,
       speechMetrics,
-      apiKey
+      apiKey,
+      requestId
     );
 
-    return NextResponse.json(result);
+    return NextResponse.json({ ...result, requestId });
   } catch (error) {
     console.error('API Evaluation Route Error:', error);
     return NextResponse.json(

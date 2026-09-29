@@ -3,6 +3,7 @@ import { EVAL_CRITERIA } from "./mockData";
 import { MultiAgentPipeline, PipelineStageCallback } from "@/agents/multiAgentPipeline";
 import { PROFILE_KEY, DEFAULT_PROFILE, CandidateProfile } from "./api";
 import { isCorruptOrGarbageProfile } from "./resumeParser";
+import { createRequestId } from "./requestId";
 
 export const FILLER_RE = /\b(um|uh|like,|basically|actually|kind of|sort of|you know|i mean|stuff|things like|literally)\b/gi;
 export const HEDGE_RE = /\b(i think|maybe|probably|i guess|sort of|kind of|possibly|i believe)\b/gi;
@@ -148,15 +149,94 @@ export async function runEvaluation(
     followUps: question.followUps || []
   };
 
-  const result = await MultiAgentPipeline.execute(
-    {
-      question: structuredQ,
-      answer,
-      mode: mode || "text",
-      candidateProfile: profile
-    },
-    onStage
-  );
+  // The browser used to execute the deterministic pipeline directly. Route
+  // evaluation through the server so the real multi-agent LLM pipeline runs
+  // with provider credentials kept off the client.
+  if (typeof window !== "undefined") {
+    try {
+      const startedAt = Date.now();
+      (['question', 'comm', 'content', 'star', 'coach'] as const).forEach((stage) => onStage?.(stage, 'running', { source: 'pending', llmAttempted: true }));
+      const serverResponse = await fetch('/api/agents/evaluate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-request-id': createRequestId('answer-evaluation') },
+        body: JSON.stringify({
+          candidateProfile: profile ? {
+            id: profile.name || 'candidate',
+            fullName: profile.name || 'Candidate',
+            targetRole: structuredQ.role || 'Software Engineer',
+            experienceYears: profile.experience?.length || 3,
+            keySkills: profile.technical_skills || [],
+            bio: profile.summary || '',
+          } : undefined,
+          question: {
+            id: structuredQ.id,
+            role: structuredQ.role,
+            stage: structuredQ.questionType,
+            competency: structuredQ.competency,
+            difficulty: structuredQ.difficulty,
+            questionType: structuredQ.questionType,
+            question: structuredQ.question,
+            expectedCompetencies: structuredQ.modelPoints,
+            evaluationCriteria: structuredQ.evaluationCriteria,
+          },
+          candidateResponse: answer,
+        }),
+      });
 
-  return result;
+      if (!serverResponse.ok) throw new Error(`LLM evaluation route returned ${serverResponse.status}`);
+      const serverResult = await serverResponse.json();
+      const feedback = serverResult.feedback;
+      if (!feedback) throw new Error('LLM evaluation returned no coaching feedback');
+
+      const scores = feedback.rubricScores || {};
+      const star = feedback.starBreakdown || {};
+      const metrics = analyzeText(answer, structuredQ);
+      const doneMs = Date.now() - startedAt;
+      const executionSource = serverResult.executionSource || (serverResult.fallbackUsed ? 'deterministic_fallback' : 'llm');
+      const stageSource = executionSource === 'llm' ? 'llm' : executionSource === 'mixed' ? 'mixed' : 'deterministic_fallback';
+      (['question', 'comm', 'content', 'star', 'coach'] as const).forEach((stage) => onStage?.(stage, 'done', {
+        source: stageSource,
+        latencyMs: doneMs,
+        llmAttempted: serverResult.llmAttempted,
+        llmSucceeded: serverResult.llmSucceeded,
+        fallbackUsed: serverResult.fallbackUsed,
+        fallbackReason: serverResult.fallbackReason,
+        requestId: serverResult.requestId,
+        agentSources: serverResult.agentSources,
+      }));
+
+      return {
+        id: `llm_${Date.now()}`,
+        questionId: structuredQ.id,
+        questionText: structuredQ.question,
+        competency: structuredQ.competency,
+        type: structuredQ.questionType,
+        difficulty: structuredQ.difficulty,
+        mode: mode || 'text',
+        answer,
+        metrics: { words: metrics.words, fillers: metrics.fillers, wpm: null, avgSentenceLen: metrics.avgLen, numbers: metrics.numbers, hedges: metrics.hedges },
+        scores: { relevance: scores.relevance || 0, clarity: scores.clarity || 0, structure: scores.responseStructure || 0, completeness: scores.completeness || 0, communication: scores.communicationQuality || 0 },
+        overall: feedback.overallScore || 0,
+        verdict: feedback.verdict || 'Needs Substantial Practice',
+        star: { situation: { detected: Boolean(star.situation?.present), evidence: star.situation?.snippet || '' }, task: { detected: Boolean(star.task?.present), evidence: star.task?.snippet || '' }, action: { detected: Boolean(star.action?.present), evidence: star.action?.snippet || '' }, result: { detected: Boolean(star.result?.present), evidence: star.result?.snippet || '' } },
+        starFilled: [star.situation, star.task, star.action, star.result].filter((item) => item?.present).length,
+        strengths: feedback.strengths || [],
+        improvements: feedback.areasForImprovement || [],
+        modelAnswer: feedback.improvedModelAnswer || '',
+        modelPoints: structuredQ.modelPoints,
+        followUps: feedback.adaptiveFollowUpQuestion?.question ? [feedback.adaptiveFollowUpQuestion.question] : [],
+        evidenceHighlights: [],
+        actionableAdvice: feedback.answerRewriteGuidance || [],
+        a2aMessages: [],
+        timings: { llmEvaluation: serverResult.executionTimeMs || doneMs },
+        createdAt: new Date().toISOString(),
+        evaluationSource: serverResult.modelUsed || (stageSource === 'llm' ? 'LLM multi-agent pipeline' : 'Deterministic fallback'),
+      };
+    } catch (error) {
+      console.warn('[CoachEngine] Server LLM evaluation unavailable; using deterministic fallback.', error);
+    }
+  }
+
+  const result = await MultiAgentPipeline.execute({ question: structuredQ, answer, mode: mode || "text", candidateProfile: profile }, onStage);
+  return { ...result, evaluationSource: 'Deterministic local pipeline fallback' };
 }

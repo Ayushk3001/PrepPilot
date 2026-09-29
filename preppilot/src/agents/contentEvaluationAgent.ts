@@ -15,6 +15,7 @@ export interface ContentEvidenceItem {
 }
 
 export interface ContentAgentOutput {
+  evaluationSource?: 'llm' | 'deterministic_fallback';
   relevance: number; // 0-100
   completeness: number; // 0-100
   competency_match: number; // 0-100

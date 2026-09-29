@@ -1,7 +1,7 @@
 'use client';
 
 import { NavLink, Link } from "@/lib/routerCompat";
-import { LayoutDashboard, Mic, History, TrendingUp, Bot, Plus, ArrowUpRight } from "lucide-react";
+import { LayoutDashboard, Mic, History, TrendingUp, Plus, ArrowUpRight } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { useAuth } from "@/features/auth/context/AuthContext";
 
@@ -10,7 +10,6 @@ const NAV = [
   { to: "/app/practice", num: "02", label: "Practice", icon: Mic, testid: "nav-practice" },
   { to: "/app/sessions", num: "03", label: "Sessions", icon: History, testid: "nav-sessions" },
   { to: "/app/plan", num: "04", label: "Plan", icon: TrendingUp, testid: "nav-plan" },
-  { to: "/app/agents", num: "05", label: "Agents", icon: Bot, testid: "nav-agents" },
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {

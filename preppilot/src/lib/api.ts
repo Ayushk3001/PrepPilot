@@ -63,20 +63,26 @@ export interface CanonicalEducation {
   startDate?: string;
   endDate?: string;
   grade?: string;
+  location?: string;
   achievements?: string[];
 }
 
 export interface CanonicalWorkExperience {
   company: string;
   role: string;
+  location?: string;
   startDate?: string;
   endDate?: string;
+  isCurrent?: boolean;
   duration: string;
   summary?: string;
   responsibilities?: string[];
   achievements?: string[];
   technologies?: string[];
   metrics?: string[];
+  sectionSource?: 'professional_experience' | 'internships';
+  sourceText?: string;
+  confidence?: number;
 }
 
 export interface CanonicalProject {
@@ -87,6 +93,11 @@ export interface CanonicalProject {
   technologies?: string[];
   results?: string;
   metrics?: string[];
+  descriptions?: string[];
+  year?: string;
+  sectionSource?: 'projects' | 'technical_projects';
+  sourceText?: string;
+  confidence?: number;
 }
 
 export interface CandidateProfile {
@@ -112,6 +123,11 @@ export interface CandidateProfile {
   experience: CanonicalWorkExperience[];
   technical_skills: string[];
   soft_skills: string[];
+
+  /** Resume snapshot metadata; optional for backwards-compatible local profiles. */
+  resumeId?: string;
+  parsedAt?: string;
+  parserSource?: 'ai' | 'heuristic' | 'manual';
 }
 
 export function createEmptyProfile(userAccount?: { name?: string; email?: string }): CandidateProfile {
@@ -264,12 +280,17 @@ const api = {
       try {
         const res = await fetch("/api/onboarding/resume", {
           method: "POST",
+          headers: { "x-request-id": `resume-upload_${Date.now()}_${Math.random().toString(36).slice(2, 8)}` },
           body: data,
         });
         if (res.ok) {
           const resData = await res.json();
           if (resData.profile) {
             localStorage.setItem(PROFILE_KEY, JSON.stringify(resData.profile));
+            if (resData.profile.resumeId) localStorage.setItem("cadence_active_resume_id", resData.profile.resumeId);
+            sessionStorage.removeItem("cadence_resume_interview_session");
+            sessionStorage.removeItem("cadence_active_interview_session");
+            sessionStorage.removeItem("cadence_prepared_opening_question");
             localStorage.setItem("cadence_profile_source", resData.source || "ai");
             if (resData.diagnostic) {
               localStorage.setItem("cadence_resume_diagnostic", JSON.stringify(resData.diagnostic));

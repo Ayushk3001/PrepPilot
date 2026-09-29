@@ -12,6 +12,7 @@ export interface CommunicationEvidenceItem {
 }
 
 export interface CommunicationAgentOutput {
+  evaluationSource?: 'llm' | 'deterministic_fallback';
   clarity: number; // 0-100
   conciseness: number; // 0-100
   communication_quality: number; // 0-100

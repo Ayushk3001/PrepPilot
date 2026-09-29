@@ -285,8 +285,8 @@ export default function AIProfile() {
 
           <ListCard
             title="Work experience" k="experience" items={profile.experience}
-            fields={[["company", "Company"], ["role", "Role"], ["duration", "Duration"]]}
-            summaryKey="summary" onSet={setList} onAdd={() => addToList("experience", { company: "", role: "", duration: "", summary: "" })} onRm={rmList}
+            fields={[["company", "Company"], ["role", "Role"], ["location", "Location"], ["startDate", "Start date"], ["endDate", "End date"]]}
+            summaryKey="summary" onSet={setList} onAdd={() => addToList("experience", { company: "", role: "", location: "", startDate: "", endDate: "", duration: "", summary: "" })} onRm={rmList}
           />
           <ListCard
             title="Projects" k="projects" items={profile.projects}
@@ -300,8 +300,8 @@ export default function AIProfile() {
           />
           <ListCard
             title="Internships" k="internships" items={profile.internships}
-            fields={[["company", "Company"], ["role", "Role"], ["duration", "Duration"]]}
-            summaryKey="summary" onSet={setList} onAdd={() => addToList("internships", { company: "", role: "", duration: "", summary: "" })} onRm={rmList}
+            fields={[["company", "Company"], ["role", "Role"], ["location", "Location"], ["startDate", "Start date"], ["endDate", "End date"]]}
+            summaryKey="summary" onSet={setList} onAdd={() => addToList("internships", { company: "", role: "", location: "", startDate: "", endDate: "", duration: "", summary: "" })} onRm={rmList}
           />
 
           <ChipCard title="Technical skills" k="technical_skills" items={profile.technical_skills} onAdd={(v) => addToList("technical_skills", v)} onRm={rmList} />

@@ -15,6 +15,7 @@ export interface CoachAgentInput {
 }
 
 export interface CoachAgentOutput {
+  evaluationSource?: 'llm' | 'deterministic_fallback';
   overallScore: number; // 0-100
   verdict: string;
   dimensionScores: {

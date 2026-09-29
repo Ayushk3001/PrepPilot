@@ -1,5 +1,6 @@
 import { CandidateProfile } from '@/lib/api';
 import { normalizeResumeProfile } from '@/lib/resumeParser';
+import { buildResumeGroundingDocuments, ResumeGroundingDocument } from '@/lib/resume/resumeSchema';
 
 export interface ResumeEvidenceItem {
   id: string;
@@ -38,6 +39,10 @@ export interface ResumeKnowledgeModel {
   experience: Array<{
     company: string;
     role: string;
+    location?: string;
+    startDate?: string;
+    endDate?: string;
+    isCurrent?: boolean;
     duration: string;
     responsibilities?: string[];
     technologies?: string[];
@@ -71,6 +76,7 @@ export interface ResumeKnowledgeModel {
   }>;
   evidenceGraph: ResumeEvidenceItem[];
   rawText?: string;
+  groundingDocuments?: ResumeGroundingDocument[];
 }
 
 export type InterviewRoundKey =
@@ -387,16 +393,20 @@ export function extractResumeKnowledge(profile: CandidateProfile, rawText?: stri
     experience: experiences.map(exp => ({
       company: exp.company,
       role: exp.role,
+      location: exp.location,
+      startDate: exp.startDate,
+      endDate: exp.endDate,
+      isCurrent: exp.isCurrent,
       duration: exp.duration,
       summary: exp.summary,
-      responsibilities: [exp.role],
+      responsibilities: exp.responsibilities || [],
       technologies: technologies.filter(t => (exp.summary || '').toLowerCase().includes(t.toLowerCase())),
       metrics: (exp.summary || '').match(/\b(\d+[\d,.]*(?:\+|%|k|M|cr|L|Lakhs?|orders?|revenue)?|\₹[\d,.]+(?:L|Cr|k)?|\$[\d,.]+(?:k|M)?)\b/gi) || [],
     })),
     projects: (profile.projects || []).map(p => ({
       name: p.name,
       description: p.summary,
-      technologies: technologies.filter(t => (p.summary || '').toLowerCase().includes(t.toLowerCase())),
+      technologies: Array.from(new Set([...(p.technologies || []), ...technologies.filter(t => (p.summary || '').toLowerCase().includes(t.toLowerCase()))])),
       metrics: (p.summary || '').match(/\b(\d+[\d,.]*(?:\+|%|k|ms|s|SLA)?|\₹[\d,.]+|\$[\d,.]+)\b/gi) || [],
     })),
     skills: {
@@ -409,6 +419,7 @@ export function extractResumeKnowledge(profile: CandidateProfile, rawText?: stri
     achievements: profile.achievements || [],
     organizations: ventures,
     evidenceGraph,
+    groundingDocuments: buildResumeGroundingDocuments(profile, profile.resumeId),
     rawText: rawText || candidateSummary,
   };
 }

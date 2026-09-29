@@ -94,6 +94,12 @@ export interface LearningResource {
 }
 
 export interface CoachingFeedback {
+  evaluationSources?: {
+    communication: 'llm' | 'deterministic_fallback';
+    content: 'llm' | 'deterministic_fallback';
+    star: 'llm' | 'deterministic_fallback';
+    coach: 'llm' | 'deterministic_fallback';
+  };
   overallScore: number; // 0-100
   verdict: 'Ready for Next Stage' | 'Promising - Needs Refinement' | 'Needs Substantial Practice';
   rubricScores: {
