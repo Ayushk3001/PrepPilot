@@ -1,0 +1,82 @@
+[
+  {
+    "id": "hr-001",
+    "role": "Fullstack Software Engineer",
+    "stage": "HR & Culture Screening",
+    "competency": "Self-Awareness & Professional Trajectory",
+    "difficulty": "Mid-Level",
+    "questionType": "HR / Cultural Fit",
+    "question": "Tell me about yourself, your technical journey, and what drives you as an engineer.",
+    "expectedCompetencies": [
+      "Concise narrative structuring (Past, Present, Future)",
+      "Highlighting technical strengths without rambling",
+      "Articulating personal motivation and alignment with engineering impact"
+    ],
+    "evaluationCriteria": [
+      "Presents a logical 90-120 second chronological journey",
+      "Focuses on engineering achievements, tech stack choices, and project ownership",
+      "Clarity of speech and absence of excessive filler words"
+    ],
+    "idealStarResponse": "I am a Fullstack Engineer with 3 years of experience specializing in distributed TypeScript microservices and responsive React systems. In my current role, I led the modernization of our billing workflow, reducing API response times by 35%. I am driven by building resilient, low-latency applications that directly solve end-user bottlenecks. I am excited to apply this ownership at scale with Prodapt."
+  },
+  {
+    "id": "hr-002",
+    "role": "Telecom & Network Systems Engineer",
+    "stage": "HR & Culture Screening",
+    "competency": "Domain Alignment & Prodapt Fit",
+    "difficulty": "Mid-Level",
+    "questionType": "HR / Cultural Fit",
+    "question": "Why are you specifically interested in telecom digital transformation and joining Prodapt?",
+    "expectedCompetencies": [
+      "Understanding of Prodapt’s core focus (Connectedness, DSPs, OSS/BSS, 5G)",
+      "Clear career alignment with telecom cloud and network automation",
+      "Value contribution mindset"
+    ],
+    "evaluationCriteria": [
+      "Directly references Prodapt domain excellence in telecom & DSP transformation",
+      "Shows enthusiasm for network virtualization, OSS/BSS modernization, or 5G core",
+      "Professional tone and tailored ambition"
+    ],
+    "idealStarResponse": "Prodapt is recognized globally as the leading domain specialist in Connectedness and DSP transformation. Having worked on telecom provisioning automation and network telemetry, I have seen how legacy OSS/BSS bottlenecks slow down 5G rollouts. Joining Prodapt allows me to work at the intersection of network automation and cloud infrastructure to deliver carrier-grade solutions to global telcos."
+  },
+  {
+    "id": "beh-001",
+    "role": "Fullstack Software Engineer",
+    "stage": "Behavioral & STAR Competency",
+    "competency": "Conflict Resolution & Stakeholder Alignment",
+    "difficulty": "Mid-Level",
+    "questionType": "Behavioral",
+    "question": "Describe a challenging situation where you had a strong technical disagreement with a team member or architect. How did you resolve it?",
+    "expectedCompetencies": [
+      "STAR methodology compliance",
+      "Objective decision-making using data and benchmarks rather than ego",
+      "Empathy and team cohesion"
+    ],
+    "evaluationCriteria": [
+      "Clearly sets the Situation and Task (specific architectural dispute)",
+      "Details concrete Actions taken (benchmarking, spike tests, RFC discussions)",
+      "Provides a quantifiable Result (delivery outcome, performance gain, team consensus)"
+    ],
+    "idealStarResponse": "Situation: During the redesign of our real-time notification engine, a senior architect favored maintaining our legacy polling system while I proposed switching to Server-Sent Events (SSE). Task: I needed to resolve the deadlock without stalling the sprint deadline. Action: I built a quick 2-day proof-of-concept benchmark measuring server memory, TCP socket utilization, and throughput under 10,000 concurrent mock connections. The data demonstrated that SSE reduced server load by 58%. I scheduled a collaborative review, presented the empirical results respectfully, and addressed his failover concerns by adding reconnect logic. Result: The team adopted the SSE architecture, the feature shipped on schedule, and we eliminated $1,200/month in idle polling cloud costs."
+  },
+  {
+    "id": "tech-001",
+    "role": "Telecom & Network Systems Engineer",
+    "stage": "Technical & Domain Depth",
+    "competency": "OSS/BSS Architecture & 5G Service Orchestration",
+    "difficulty": "Senior",
+    "questionType": "Technical",
+    "question": "How does modern OSS/BSS architecture decouple service order management from network provisioning in a cloud-native 5G standalone (SA) environment?",
+    "expectedCompetencies": [
+      "Understanding of TMF Open Digital Architecture (ODA) and Open APIs (e.g. TMF622, TMF641)",
+      "Service Orchestration (NFV-MANO, Kubernetes CNFs, Network Slicing)",
+      "Event-driven asynchronous decoupling (Kafka, gRPC, microservices)"
+    ],
+    "evaluationCriteria": [
+      "Explains separation between Customer Facing Services (CFS) and Resource Facing Services (RFS)",
+      "Mentions standard TMF APIs or cloud-native orchestration protocols",
+      "Addresses network slicing lifecycle management (CSMF, NSMF, NSSMF)"
+    ],
+    "idealStarResponse": "In modern cloud-native 5G standalone architectures, decoupling is achieved by implementing TM Forum Open Digital Architecture (ODA) standards. BSS captures commercial intent via TMF622 Product Order API and maps it into Customer Facing Services (CFS). The Service Order Management (SOM) layer then translates CFS into Resource Facing Services (RFS) using TMF641 Service Ordering. Crucially, the SOM communicates asynchronously with the Network Resource Orchestrator via an event-driven Kafka bus. This isolates business logic from underlying network controllers (NSMF/NSSMF) and NFV-MANO orchestration. As a result, network slicing and containerized network functions (CNFs) can scale and heal dynamically on Kubernetes without blocking or modifying front-end billing and CRM workflows."
+  }
+]

@@ -1,0 +1,131 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 700" width="100%" height="100%" style="background-color: #090d16; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+  <defs>
+    <linearGradient id="blueGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3b82f6" />
+      <stop offset="100%" stop-color="#1d4ed8" />
+    </linearGradient>
+    <linearGradient id="purpleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8b5cf6" />
+      <stop offset="100%" stop-color="#6d28d9" />
+    </linearGradient>
+    <linearGradient id="emeraldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10b981" />
+      <stop offset="100%" stop-color="#047857" />
+    </linearGradient>
+    <linearGradient id="amberGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f59e0b" />
+      <stop offset="100%" stop-color="#b45309" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000000" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+
+  <!-- Title & Banner -->
+  <text x="600" y="45" text-anchor="middle" fill="#f8fafc" font-size="24" font-weight="bold" letter-spacing="1">ELEVATE-AI: MULTI-AGENT COACHING SYSTEM ARCHITECTURE</text>
+  <text x="600" y="70" text-anchor="middle" fill="#94a3b8" font-size="13">High-Level Autonomous Agent Workflow, Acoustic Analysis &amp; A2A Deliberation Pipeline</text>
+
+  <!-- STEP 1: Candidate & Profile Input -->
+  <g transform="translate(60, 110)" filter="url(#shadow)">
+    <rect width="200" height="150" rx="12" fill="#0f172a" stroke="#334155" stroke-width="1.5" />
+    <rect width="200" height="32" rx="12" fill="#1e293b" />
+    <text x="100" y="21" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="bold">1. CANDIDATE PROFILE</text>
+    <text x="20" y="55" fill="#e2e8f0" font-size="11" font-weight="bold">• Target Role</text>
+    <text x="35" y="72" fill="#94a3b8" font-size="10">Telecom, Software, Cloud</text>
+    <text x="20" y="92" fill="#e2e8f0" font-size="11" font-weight="bold">• Experience &amp; Skills</text>
+    <text x="35" y="109" fill="#94a3b8" font-size="10">OSS/BSS, 5G, Distributed</text>
+    <text x="20" y="129" fill="#e2e8f0" font-size="11" font-weight="bold">• Target Stage</text>
+    <text x="35" y="144" fill="#94a3b8" font-size="10">HR, STAR, Tech, System</text>
+  </g>
+
+  <!-- Flow Arrow 1 to 2 -->
+  <path d="M 260 185 L 320 185" stroke="#3b82f6" stroke-width="2.5" marker-end="url(#arrow)" />
+  <circle cx="290" cy="185" r="4" fill="#60a5fa" />
+
+  <!-- STEP 2: Interview Question Agent -->
+  <g transform="translate(320, 110)" filter="url(#shadow)">
+    <rect width="220" height="150" rx="12" fill="#0f172a" stroke="#3b82f6" stroke-width="1.5" />
+    <rect width="220" height="32" rx="12" fill="url(#blueGrad)" />
+    <text x="110" y="21" text-anchor="middle" fill="#ffffff" font-size="12" font-weight="bold">2. QUESTION AGENT</text>
+    <text x="20" y="60" fill="#e2e8f0" font-size="11">• Dataset Curation</text>
+    <text x="35" y="75" fill="#94a3b8" font-size="10">RecruitView / DopplerHQ bank</text>
+    <text x="20" y="98" fill="#e2e8f0" font-size="11">• Dynamic Generation</text>
+    <text x="35" y="113" fill="#94a3b8" font-size="10">GPT-4o tailored prompt</text>
+    <text x="20" y="135" fill="#e2e8f0" font-size="11">• Rubric Definition</text>
+  </g>
+
+  <!-- Flow Arrow 2 to 3 -->
+  <path d="M 540 185 L 600 185" stroke="#3b82f6" stroke-width="2.5" />
+
+  <!-- STEP 3: Speech & Text Intake -->
+  <g transform="translate(600, 110)" filter="url(#shadow)">
+    <rect width="220" height="150" rx="12" fill="#0f172a" stroke="#8b5cf6" stroke-width="1.5" />
+    <rect width="220" height="32" rx="12" fill="url(#purpleGrad)" />
+    <text x="110" y="21" text-anchor="middle" fill="#ffffff" font-size="12" font-weight="bold">3. DUAL STT &amp; ACOUSTICS</text>
+    <text x="20" y="58" fill="#e2e8f0" font-size="11">• Web Speech API</text>
+    <text x="35" y="73" fill="#94a3b8" font-size="10">Zero-cost client streaming</text>
+    <text x="20" y="95" fill="#e2e8f0" font-size="11">• Acoustic Heuristics</text>
+    <text x="35" y="110" fill="#94a3b8" font-size="10">WPM &amp; Filler Word Counter</text>
+    <text x="20" y="132" fill="#e2e8f0" font-size="11">• Whisper Fallback API</text>
+  </g>
+
+  <!-- Flow Downward to Specialist Agents -->
+  <path d="M 710 260 L 710 320" stroke="#8b5cf6" stroke-width="2.5" />
+  <path d="M 160 320 L 1020 320" stroke="#8b5cf6" stroke-width="2" stroke-dasharray="4,4" />
+
+  <!-- STEP 4: Parallel Specialist Agents Cluster -->
+  <!-- 4A: Communication Analysis Agent -->
+  <g transform="translate(80, 350)" filter="url(#shadow)">
+    <rect width="280" height="150" rx="12" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5" />
+    <rect width="280" height="32" rx="12" fill="#0284c7" />
+    <text x="140" y="21" text-anchor="middle" fill="#ffffff" font-size="12" font-weight="bold">4A. COMMUNICATION AGENT</text>
+    <text x="20" y="58" fill="#e2e8f0" font-size="11">• Clarity &amp; Conciseness Scoring</text>
+    <text x="20" y="80" fill="#e2e8f0" font-size="11">• Vocal Tone Diagnostics</text>
+    <text x="35" y="96" fill="#94a3b8" font-size="10">(Confident, Hesitant, Rushed)</text>
+    <text x="20" y="120" fill="#e2e8f0" font-size="11">• Filler Word Analysis</text>
+    <text x="35" y="136" fill="#94a3b8" font-size="10">Replaces crutches with pauses</text>
+  </g>
+
+  <!-- 4B: Content Evaluation Agent -->
+  <g transform="translate(460, 350)" filter="url(#shadow)">
+    <rect width="280" height="150" rx="12" fill="#0f172a" stroke="#10b981" stroke-width="1.5" />
+    <rect width="280" height="32" rx="12" fill="url(#emeraldGrad)" />
+    <text x="140" y="21" text-anchor="middle" fill="#ffffff" font-size="12" font-weight="bold">4B. CONTENT EVALUATION AGENT</text>
+    <text x="20" y="58" fill="#e2e8f0" font-size="11">• Domain Depth &amp; Accuracy</text>
+    <text x="35" y="74" fill="#94a3b8" font-size="10">Validates telecom/OSS/cloud rigor</text>
+    <text x="20" y="98" fill="#e2e8f0" font-size="11">• Grounded Quote Citations</text>
+    <text x="35" y="114" fill="#94a3b8" font-size="10">Verbatim quotes from transcript</text>
+    <text x="20" y="136" fill="#e2e8f0" font-size="11">• Missing Knowledge Gaps</text>
+  </g>
+
+  <!-- 4C: STAR Response Structure Agent -->
+  <g transform="translate(840, 350)" filter="url(#shadow)">
+    <rect width="280" height="150" rx="12" fill="#0f172a" stroke="#f59e0b" stroke-width="1.5" />
+    <rect width="280" height="32" rx="12" fill="url(#amberGrad)" />
+    <text x="140" y="21" text-anchor="middle" fill="#ffffff" font-size="12" font-weight="bold">4C. STAR STRUCTURE AGENT</text>
+    <text x="20" y="58" fill="#e2e8f0" font-size="11">• Situation (S) Framing &amp; Context</text>
+    <text x="20" y="80" fill="#e2e8f0" font-size="11">• Task (T) Personal Ownership</text>
+    <text x="20" y="102" fill="#e2e8f0" font-size="11">• Action (A) Technical Interventions</text>
+    <text x="20" y="124" fill="#e2e8f0" font-size="11">• Result (R) Quantifiable Metrics</text>
+    <text x="35" y="140" fill="#94a3b8" font-size="10">Verifies %, $, SLA, throughput</text>
+  </g>
+
+  <!-- A2A Convergence Arrows into Lead Coach -->
+  <path d="M 220 500 L 220 540 L 600 540 L 600 560" stroke="#38bdf8" stroke-width="2" />
+  <path d="M 600 500 L 600 560" stroke="#10b981" stroke-width="2" />
+  <path d="M 980 500 L 980 540 L 600 540 L 600 560" stroke="#f59e0b" stroke-width="2" />
+
+  <!-- STEP 5: Lead Interview Coach Agent Synthesis -->
+  <g transform="translate(250, 560)" filter="url(#shadow)">
+    <rect width="700" height="110" rx="12" fill="#0f172a" stroke="#8b5cf6" stroke-width="2" />
+    <rect width="700" height="30" rx="12" fill="url(#purpleGrad)" />
+    <text x="350" y="20" text-anchor="middle" fill="#ffffff" font-size="12" font-weight="bold">5. LEAD INTERVIEW COACH AGENT (A2A SYNTHESIS &amp; LONGITUDINAL ROADMAP)</text>
+    <text x="30" y="55" fill="#e2e8f0" font-size="11">• Holistic Rubric Scoring (0-100) &amp; Verdict</text>
+    <text x="30" y="75" fill="#e2e8f0" font-size="11">• Improved Model Answer Rewrite + TTS Narration</text>
+    <text x="30" y="95" fill="#e2e8f0" font-size="11">• Adaptive Follow-up Probing Question</text>
+    
+    <text x="380" y="55" fill="#e2e8f0" font-size="11">• Longitudinal Recurring Gap Detection</text>
+    <text x="380" y="75" fill="#e2e8f0" font-size="11">• Personalized Improvement Plan (Immediate &amp; Medium-term)</text>
+    <text x="380" y="95" fill="#e2e8f0" font-size="11">• Zero-Failure Fallback: Automatic Deterministic Rule Engine</text>
+  </g>
+</svg>
