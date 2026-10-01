@@ -193,7 +193,7 @@ export async function runEvaluation(
       const metrics = analyzeText(answer, structuredQ);
       const doneMs = Date.now() - startedAt;
       const executionSource = serverResult.executionSource || (serverResult.fallbackUsed ? 'deterministic_fallback' : 'llm');
-      const stageSource = executionSource === 'llm' ? 'llm' : executionSource === 'mixed' ? 'mixed' : 'deterministic_fallback';
+      const stageSource = executionSource === 'llm' || executionSource === 'llm_retry' ? executionSource : executionSource === 'mixed' ? 'mixed' : 'deterministic_fallback';
       (['question', 'comm', 'content', 'star', 'coach'] as const).forEach((stage) => onStage?.(stage, 'done', {
         source: stageSource,
         latencyMs: doneMs,
@@ -215,14 +215,16 @@ export async function runEvaluation(
         mode: mode || 'text',
         answer,
         metrics: { words: metrics.words, fillers: metrics.fillers, wpm: null, avgSentenceLen: metrics.avgLen, numbers: metrics.numbers, hedges: metrics.hedges },
-        scores: { relevance: scores.relevance || 0, clarity: scores.clarity || 0, structure: scores.responseStructure || 0, completeness: scores.completeness || 0, communication: scores.communicationQuality || 0 },
-        overall: feedback.overallScore || 0,
+        scores: { relevance: feedback.relevance ?? scores.relevance ?? 0, clarity: feedback.clarity ?? scores.clarity ?? 0, structure: feedback.structure ?? scores.structure ?? scores.responseStructure ?? 0, completeness: feedback.completeness ?? scores.completeness ?? 0, communication: feedback.communication_quality ?? scores.communication ?? scores.communicationQuality ?? 0 },
+        overall: feedback.score ?? feedback.overallScore ?? 0,
         verdict: feedback.verdict || 'Needs Substantial Practice',
         star: { situation: { detected: Boolean(star.situation?.present), evidence: star.situation?.snippet || '' }, task: { detected: Boolean(star.task?.present), evidence: star.task?.snippet || '' }, action: { detected: Boolean(star.action?.present), evidence: star.action?.snippet || '' }, result: { detected: Boolean(star.result?.present), evidence: star.result?.snippet || '' } },
+        starApplicable: Boolean(feedback.starBreakdown),
         starFilled: [star.situation, star.task, star.action, star.result].filter((item) => item?.present).length,
         strengths: feedback.strengths || [],
         improvements: feedback.areasForImprovement || [],
         modelAnswer: feedback.improvedModelAnswer || '',
+        expected_answer: feedback.expectedAnswer || null,
         modelPoints: structuredQ.modelPoints,
         followUps: feedback.adaptiveFollowUpQuestion?.question ? [feedback.adaptiveFollowUpQuestion.question] : [],
         evidenceHighlights: [],
@@ -238,5 +240,5 @@ export async function runEvaluation(
   }
 
   const result = await MultiAgentPipeline.execute({ question: structuredQ, answer, mode: mode || "text", candidateProfile: profile }, onStage);
-  return { ...result, evaluationSource: 'Deterministic local pipeline fallback' };
+  return { ...result, expected_answer: null, evaluationSource: 'Deterministic local pipeline fallback' };
 }

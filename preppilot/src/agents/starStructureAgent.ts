@@ -10,8 +10,8 @@ export interface StarAgentInput {
 }
 
 export interface StarAgentOutput {
-  evaluationSource?: 'llm' | 'deterministic_fallback';
-  structure_score: number; // 0-100
+  evaluationSource?: 'llm' | 'llm_retry' | 'deterministic_fallback';
+  structure_score: number | null; // 0-100 when STAR applies; null otherwise
   starFilled: number; // 0-4
   situation: StarComponentAnalysis;
   task: StarComponentAnalysis;
@@ -182,7 +182,7 @@ Extract verbatim quoted sentences from the candidate's response as empirical evi
     }
 
     return {
-      structure_score,
+      structure_score: input.expectSTAR ? structure_score : null,
       starFilled,
       situation,
       task,

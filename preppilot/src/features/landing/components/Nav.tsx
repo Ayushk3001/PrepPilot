@@ -5,10 +5,11 @@ import { Logo } from "@/components/Logo";
 import { getStartPracticingRoute } from "@/lib/authRoute";
 
 const LINKS = [
-  { num: "01", label: "Features", href: "#features" },
-  { num: "02", label: "5-Agent Engine", href: "#agents" },
-  { num: "03", label: "Try it live", href: "#practice-demo" },
-  { num: "04", label: "Method", href: "#method" },
+  { num: "01", label: "Evidence Graph", href: "#evidence" },
+  { num: "02", label: "6 Rounds", href: "#rounds" },
+  { num: "03", label: "5-Agent Engine", href: "#agents" },
+  { num: "04", label: "Live Simulator", href: "#practice-demo" },
+  { num: "05", label: "Telemetry & FAQ", href: "#features" },
 ];
 
 export default function Nav() {
@@ -38,7 +39,7 @@ export default function Nav() {
           <span>STATUS: AI ONLINE</span>
         </div>
 
-        <nav className="hidden items-center gap-6 font-mono md:flex">
+        <nav className="hidden items-center gap-4 lg:gap-6 font-mono md:flex">
           {LINKS.map((l) => (
             <a
               key={l.href}
@@ -56,7 +57,7 @@ export default function Nav() {
           <Link
             to="/app"
             data-testid="nav-dashboard-btn"
-            className="text-xs font-bold uppercase tracking-wider text-ink px-3 py-2 border-2 border-transparent hover:border-line hover:bg-white transition-all"
+            className="text-xs font-bold uppercase tracking-wider text-ink px-3 py-2 border-2 border-transparent hover:border-line hover:bg-white transition-all cursor-pointer"
           >
             Dashboard
           </Link>
@@ -64,14 +65,14 @@ export default function Nav() {
             href={practiceRoute}
             onClick={handleStartPracticing}
             data-testid="nav-launch-arena-btn"
-            className="btn-terra !px-4 !py-2 !text-xs font-bold"
+            className="btn-terra !px-4 !py-2 !text-xs font-bold cursor-pointer"
           >
             START SESSION <ArrowUpRight className="h-4 w-4" />
           </a>
         </div>
 
         <button
-          className="border-2 border-line bg-white p-2 md:hidden"
+          className="border-2 border-line bg-white p-2 md:hidden cursor-pointer"
           onClick={() => setOpen(!open)}
           data-testid="nav-mobile-toggle"
           aria-label="Menu"
@@ -81,7 +82,7 @@ export default function Nav() {
       </div>
 
       {open && (
-        <div className="border-t-2 border-line bg-paper px-6 py-5 md:hidden font-mono">
+        <div className="border-t-2 border-line bg-paper px-6 py-5 md:hidden font-mono space-y-4">
           <div className="space-y-2">
             {LINKS.map((l) => (
               <a
@@ -95,17 +96,25 @@ export default function Nav() {
               </a>
             ))}
           </div>
-          <a
-            href={practiceRoute}
-            onClick={(e) => {
-              setOpen(false);
-              handleStartPracticing(e);
-            }}
-            className="btn-terra mt-4 w-full text-center text-xs"
-            data-testid="nav-mobile-cta"
-          >
-            START SESSION →
-          </a>
+          <div className="pt-2 border-t-2 border-line space-y-2">
+            <Link
+              to="/app"
+              onClick={() => setOpen(false)}
+              className="block w-full border-2 border-line bg-white p-3 text-center text-xs font-bold uppercase tracking-wider text-ink"
+            >
+              Candidate Dashboard
+            </Link>
+            <a
+              href={practiceRoute}
+              onClick={(e) => {
+                setOpen(false);
+                handleStartPracticing(e);
+              }}
+              className="btn-terra block w-full !p-3 text-center !text-xs font-bold uppercase"
+            >
+              START SESSION NOW →
+            </a>
+          </div>
         </div>
       )}
     </header>

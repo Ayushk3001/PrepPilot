@@ -278,7 +278,7 @@ export class ResumeInterviewerAgent {
       identifiedWeakness: lastEvaluation?.improvements?.[0] || null,
     };
 
-    const systemPrompt = `Generate exactly one concise interview question using the supplied candidate context. Ground it in the resume and current interview round. Avoid invented facts. Return only this JSON object: {"question":"<maximum 45-word interview question>"}. No reasoning, explanation, markdown, preamble, scoring, or additional fields.`;
+    const systemPrompt = `Generate exactly one concise interview question using the supplied candidate context. Ground it in the resume and current interview round. Do not assume a metric, achievement, technology, responsibility, or outcome unless the supplied context explicitly supports it. If no metric is documented, ask neutrally about impact or how effectiveness would be measured; never pressure the candidate to invent a percentage. Return only this JSON object: {"question":"<maximum 45-word interview question>"}. No reasoning, explanation, markdown, preamble, scoring, or additional fields.`;
     const roleGuidance = /\b(data analyst|analyst|\bda\b)\b/i.test(state.targetRole)
       ? 'For this Data Analyst role, prioritize SQL, data quality, interpretation, dashboards, statistics, business reasoning, and stakeholder communication. Do not ask ML or system-design questions unless the resume directly supports them.'
       : /\b(executive|leadership|manager|\bem\b)\b/i.test(state.targetRole)
@@ -311,7 +311,7 @@ Do not include markdown, code fences, analysis, reasoning, explanations, metadat
   "evidenceUsed": ${JSON.stringify(targetEvidence?.facts?.slice(0, 2) || [targetEvidence?.topic || 'Resume'])}
 }*/`;
 
-    const minimalPrompt = `Candidate context:\n${JSON.stringify(promptContext)}\nRole guidance: ${roleGuidance}\nGenerate one conversational question of no more than 45 words. Return only {"question":"<maximum 45-word interview question>"}. No reasoning, explanation, markdown, preamble, scoring, or additional fields.`;
+    const minimalPrompt = `Candidate context:\n${JSON.stringify(promptContext)}\nRole guidance: ${roleGuidance}\nGenerate one conversational question of no more than 45 words. Ask neutrally when a metric is not documented: ask about impact and how it would be measured rather than presupposing a percentage or time saving. Return only {"question":"<maximum 45-word interview question>"}. No reasoning, explanation, markdown, preamble, scoring, or additional fields.`;
     const messages = [
       { role: 'system' as const, content: systemPrompt },
       { role: 'user' as const, content: minimalPrompt },

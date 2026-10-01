@@ -42,7 +42,7 @@ export default function Footer() {
               href={practiceRoute}
               onClick={handleStartPracticing}
               data-testid="footer-cta"
-              className="btn-terra !px-6 !py-3.5 !text-sm font-mono font-bold shrink-0 shadow-[4px_4px_0_#paper]"
+              className="btn-terra !px-6 !py-3.5 !text-sm font-mono font-bold shrink-0 shadow-[4px_4px_0_#paper] cursor-pointer"
             >
               START PRACTICING <ArrowRight className="h-4 w-4" />
             </a>
@@ -51,10 +51,12 @@ export default function Footer() {
 
         <div className="mt-16 flex flex-col justify-between gap-6 border-t-2 border-coaline pt-8 sm:flex-row sm:items-center font-mono">
           <Logo dark />
-          <nav className="flex flex-wrap gap-6 text-xs font-bold uppercase tracking-wider text-paper/70">
-            <a href="#features" className="transition-colors hover:text-[#C7FF2F]">Features</a>
-            <a href="#agents" className="transition-colors hover:text-[#C7FF2F]">5-Agent Engine</a>
+          <nav className="flex flex-wrap gap-4 sm:gap-6 text-xs font-bold uppercase tracking-wider text-paper/70">
+            <a href="#evidence" className="transition-colors hover:text-[#C7FF2F]">Evidence Graph</a>
+            <a href="#rounds" className="transition-colors hover:text-[#C7FF2F]">6 Rounds</a>
+            <a href="#agents" className="transition-colors hover:text-[#C7FF2F]">5 Agents</a>
             <a href="#practice-demo" className="transition-colors hover:text-[#C7FF2F]">Live Demo</a>
+            <a href="#features" className="transition-colors hover:text-[#C7FF2F]">Telemetry</a>
             <Link to="/app" className="transition-colors hover:text-[#C7FF2F]">Dashboard</Link>
           </nav>
           <p className="text-[10px] uppercase tracking-widest text-paper/40 font-bold">

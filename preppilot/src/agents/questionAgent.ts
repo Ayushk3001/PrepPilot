@@ -85,7 +85,7 @@ Do not include markdown, code fences, analysis, reasoning, explanations, or othe
   "idealStarResponse": "A 3-sentence model answer"
 }*/`;
 
-    const minimalPrompt = `Generate exactly one interview question for role ${profile.targetRole}, stage ${stage}, experience ${profile.experienceYears} years, and skills ${profile.keySkills.join(', ')}. Return only {"question":"<maximum 45-word interview question>"}. No reasoning, explanation, markdown, preamble, scoring, or additional fields.`;
+    const minimalPrompt = `Generate exactly one interview question for role ${profile.targetRole}, stage ${stage}, experience ${profile.experienceYears} years, and skills ${profile.keySkills.join(', ')}. Do not assume metrics, outcomes, technologies, or personal ownership that are not explicitly supported by this profile. If a metric is not documented, ask neutrally about impact and how effectiveness would be measured. Return only {"question":"<maximum 45-word interview question>"}. No reasoning, explanation, markdown, preamble, scoring, or additional fields.`;
     const messages = [{ role: 'system' as const, content: minimalPrompt }];
     const res = await traceLlmCall('llm_question_generation', messages, () => executeChatCompletion({
       model: effectiveModel,

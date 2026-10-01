@@ -46,7 +46,7 @@ export async function runSingleBenchmarkTest(
 
   // Response analysis quality
   const responseAnalysisQuality = Math.round(
-    ((fb.rubricScores.clarity + fb.rubricScores.responseStructure + fb.rubricScores.completeness) / 3)
+    ((fb.rubricScores.clarity + fb.rubricScores.structure + fb.rubricScores.completeness) / 3)
   );
 
   // Consistency score

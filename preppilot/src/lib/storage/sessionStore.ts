@@ -16,8 +16,19 @@ export function getStoredSessions(): PracticeSessionRecord[] {
 export function saveSession(session: PracticeSessionRecord): PracticeSessionRecord[] {
   if (typeof window === 'undefined') return [session];
   try {
+    // New sessions are persisted in the canonical Project 7 shape. Legacy
+    // aliases are read elsewhere only for historical-session compatibility.
+    const { responseStructure: _legacyStructure, communicationQuality: _legacyCommunication, ...canonicalRubricScores } = session.coachingFeedback.rubricScores;
+    const canonicalSession: PracticeSessionRecord = {
+      ...session,
+      coachingFeedback: {
+        ...session.coachingFeedback,
+        rubricScores: canonicalRubricScores as PracticeSessionRecord['coachingFeedback']['rubricScores'],
+        overallScore: session.coachingFeedback.score,
+      },
+    };
     const existing = getStoredSessions();
-    const updated = [session, ...existing].slice(0, 50); // Keep last 50 sessions
+    const updated = [canonicalSession, ...existing].slice(0, 50); // Keep last 50 sessions
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
     return updated;
   } catch (err) {
@@ -54,7 +65,7 @@ export function computeLongitudinalMetrics(sessions: PracticeSessionRecord[]) {
     };
   }
 
-  const scores = sessions.map(s => s.coachingFeedback.overallScore);
+  const scores = sessions.map(s => s.coachingFeedback.score ?? s.coachingFeedback.overallScore);
   const totalScore = scores.reduce((a, b) => a + b, 0);
 
   const wpms = sessions.filter(s => s.speechMetrics).map(s => s.speechMetrics!.wordsPerMinute);
@@ -77,9 +88,9 @@ export function computeLongitudinalMetrics(sessions: PracticeSessionRecord[]) {
   // Competency averages
   const relevance = Math.round(sessions.reduce((acc, s) => acc + s.coachingFeedback.rubricScores.relevance, 0) / sessions.length);
   const clarity = Math.round(sessions.reduce((acc, s) => acc + s.coachingFeedback.rubricScores.clarity, 0) / sessions.length);
-  const structure = Math.round(sessions.reduce((acc, s) => acc + s.coachingFeedback.rubricScores.responseStructure, 0) / sessions.length);
+  const structure = Math.round(sessions.reduce((acc, s) => acc + s.coachingFeedback.rubricScores.structure, 0) / sessions.length);
   const completeness = Math.round(sessions.reduce((acc, s) => acc + s.coachingFeedback.rubricScores.completeness, 0) / sessions.length);
-  const quality = Math.round(sessions.reduce((acc, s) => acc + s.coachingFeedback.rubricScores.communicationQuality, 0) / sessions.length);
+  const quality = Math.round(sessions.reduce((acc, s) => acc + s.coachingFeedback.rubricScores.communication, 0) / sessions.length);
 
   return {
     totalSessions: sessions.length,

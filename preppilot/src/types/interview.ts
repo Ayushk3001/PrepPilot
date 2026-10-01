@@ -94,19 +94,30 @@ export interface LearningResource {
 }
 
 export interface CoachingFeedback {
+  /** Canonical Project 7 evaluation contract. */
+  score: number;
+  relevance: number;
+  clarity: number;
+  structure: number;
+  completeness: number;
+  communication_quality: number;
   evaluationSources?: {
-    communication: 'llm' | 'deterministic_fallback';
-    content: 'llm' | 'deterministic_fallback';
-    star: 'llm' | 'deterministic_fallback';
-    coach: 'llm' | 'deterministic_fallback';
+    communication: 'llm' | 'llm_retry' | 'deterministic_fallback';
+    content: 'llm' | 'llm_retry' | 'deterministic_fallback';
+    star: 'llm' | 'llm_retry' | 'deterministic_fallback';
+    coach: 'llm' | 'llm_retry' | 'deterministic_fallback';
   };
   overallScore: number; // 0-100
   verdict: 'Ready for Next Stage' | 'Promising - Needs Refinement' | 'Needs Substantial Practice';
   rubricScores: {
     relevance: number;
     clarity: number;
-    responseStructure: number;
+    structure: number;
     completeness: number;
+    communication: number;
+    /** @deprecated Read structure/communication instead. Kept for stored-session migration. */
+    responseStructure: number;
+    /** @deprecated Read communication instead. Kept for stored-session migration. */
     communicationQuality: number;
   };
   strengths: string[];
@@ -115,6 +126,7 @@ export interface CoachingFeedback {
   communicationAnalysis: CommunicationFeedback;
   contentEvaluation: ContentFeedback;
   improvedModelAnswer: string;
+  expectedAnswer?: string | null;
   answerRewriteGuidance: string[];
   adaptiveFollowUpQuestion: {
     question: string;

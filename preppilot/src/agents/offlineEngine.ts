@@ -117,11 +117,7 @@ export function runOfflineMultiAgentAnalysis(
   }
 
   // --- 4. Synthesis & Lead Coach Scoring ---
-  const overallScore = Math.round(
-    (commFeedback.communicationQualityScore * 0.3) +
-    (contentFeedback.relevanceScore * 0.35) +
-    ((starBreakdown ? starBreakdown.overallStarScore : contentFeedback.technicalDepthScore) * 0.35)
-  );
+  const overallScore = Math.round((contentFeedback.relevanceScore + commFeedback.clarityScore + (starBreakdown ? starBreakdown.overallStarScore : 78) + contentFeedback.completenessScore + commFeedback.communicationQualityScore) / 5);
 
   const verdict = overallScore >= 82 
     ? 'Ready for Next Stage' 
@@ -130,13 +126,21 @@ export function runOfflineMultiAgentAnalysis(
     : 'Needs Substantial Practice';
 
   return {
+    score: overallScore,
+    relevance: contentFeedback.relevanceScore,
+    clarity: commFeedback.clarityScore,
+    structure: starBreakdown ? starBreakdown.overallStarScore : 78,
+    completeness: contentFeedback.completenessScore,
+    communication_quality: commFeedback.communicationQualityScore,
     overallScore,
     verdict,
     rubricScores: {
       relevance: contentFeedback.relevanceScore,
       clarity: commFeedback.clarityScore,
+      structure: starBreakdown ? starBreakdown.overallStarScore : 78,
       responseStructure: starBreakdown ? starBreakdown.overallStarScore : 78,
       completeness: contentFeedback.completenessScore,
+      communication: commFeedback.communicationQualityScore,
       communicationQuality: commFeedback.communicationQualityScore
     },
     strengths: [

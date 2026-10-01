@@ -14,8 +14,14 @@ export interface ContentEvidenceItem {
   detail: string;
 }
 
+export interface QuestionRequirementEvaluation {
+  requirement: string;
+  status: 'fully_answered' | 'partially_answered' | 'missing';
+  evidence: string;
+}
+
 export interface ContentAgentOutput {
-  evaluationSource?: 'llm' | 'deterministic_fallback';
+  evaluationSource?: 'llm' | 'llm_retry' | 'deterministic_fallback';
   relevance: number; // 0-100
   completeness: number; // 0-100
   competency_match: number; // 0-100
@@ -27,6 +33,10 @@ export interface ContentAgentOutput {
   strengths: string[];
   gaps: string[];
   evidence: ContentEvidenceItem[];
+  question_requirements: QuestionRequirementEvaluation[];
+  measurement_plan_present: boolean;
+  outcome_present: boolean;
+  personal_contribution_clear: boolean;
 }
 
 export class ContentEvaluationAgent {
@@ -55,7 +65,23 @@ Extract verbatim citations from the response and map them to the rubric checklis
     }
     const keywordOverlapRatio = qKeywords.length > 0 ? qMatches / qKeywords.length : 0.5;
 
-    // 2. Metric extraction (numbers, %, $, latency units, throughput)
+    // 2. Measurement plans are valid evidence even when no historical outcome
+    // is reported. This distinction is central to questions asking how impact
+    // would be assessed or measured.
+    const measurement_plan_present = /\b(?:would|could|will|can|through|using|based on)\b[^.!?]{0,100}\b(?:assess|measure|track|monitor|evaluate|effectiveness|task completion time|user feedback|usability|responsiveness|accuracy|inference time|reliability|resource utilization|latency|error rate|throughput|adoption|task success rate)\b|\b(?:task completion time|user feedback|usability issues?|system responsiveness|model accuracy|inference time|resource utilization|error rate|throughput|task success rate)\b/i.test(text);
+    const outcome_present = /\b(?:achieved|resulted in|reduced|increased|improved|saved|delivered|grew|decreased|fell|rose)\b[^.!?]{0,80}(?:\d|%|percent|ms|seconds?|minutes?|hours?|users?|customers?|adoption|outcome|impact)/i.test(text);
+    const personal_contribution_clear = /\bI\s+(?:developed|built|designed|implemented|created|owned|led|focused|delivered|measured|assessed)\b/i.test(text);
+    const question_requirements: QuestionRequirementEvaluation[] = [];
+    if (/\b(?:how did you|how do you|how would you)\s+(?:assess|evaluate|measure)\b[^?]{0,40}\bimpact\b/i.test(qLower)) {
+      const hasAssessmentMethod = /\b(?:assess|measure|track|monitor|evaluate|task completion|user feedback|usability|responsiveness|accuracy|reliability|latency)\b/i.test(text);
+      question_requirements.push({ requirement: 'Explain how impact was or would be assessed.', status: hasAssessmentMethod && outcome_present ? 'fully_answered' : hasAssessmentMethod ? 'partially_answered' : 'missing', evidence: hasAssessmentMethod ? text.match(/[^.!?]*(?:assess|measure|track|monitor|evaluate|task completion|user feedback|usability|responsiveness|accuracy|reliability|latency)[^.!?]*/i)?.[0]?.trim() || '' : '' });
+    }
+    if (/\bhow would you\s+(?:measure|track|monitor|evaluate|assess)\b|\b(?:measure|evaluate)\s+the\s+effectiveness\b/i.test(qLower)) {
+      question_requirements.push({ requirement: 'Explain how effectiveness would be measured.', status: measurement_plan_present ? 'fully_answered' : 'missing', evidence: measurement_plan_present ? text.match(/[^.!?]*(?:measure|track|monitor|evaluate|accuracy|inference|reliability|resource|latency)[^.!?]*/i)?.[0]?.trim() || '' : '' });
+    }
+    if (question_requirements.length === 0) question_requirements.push({ requirement: 'Address the question and expected competencies.', status: wordCount >= 20 && keywordOverlapRatio >= 0.25 ? 'partially_answered' : 'missing', evidence: text.slice(0, 180) });
+
+    // 3. Metric extraction (numbers, %, $, latency units, throughput)
     const metricMatches = text.match(/\b(?:\$?\d+(?:\.\d+)?%?|\d+\s*(?:ms|seconds|minutes|k|m|gb|tb|eps|qps|users))\b/gi) || [];
     const metrics_cited = Array.from(new Set(metricMatches));
 
@@ -75,21 +101,22 @@ Extract verbatim citations from the response and map them to the rubric checklis
     }
 
     // 4. Calculate Scores
-    const answered_prompt = wordCount >= 20 && keywordOverlapRatio >= 0.25;
+    const answered_prompt = wordCount >= 20 && keywordOverlapRatio >= 0.25 && question_requirements.some((item) => item.status !== 'missing');
 
     const pointsRatio = modelPoints.length > 0 ? key_points_covered.length / modelPoints.length : 0.6;
+    const requirementCoverage = question_requirements.reduce((sum, item) => sum + (item.status === 'fully_answered' ? 1 : item.status === 'partially_answered' ? 0.6 : 0), 0) / Math.max(question_requirements.length, 1);
     const lengthBudget = Math.max(input.question.durationSec / 2.2, 50);
     const lengthRatio = Math.min(wordCount / lengthBudget, 1.2);
 
     // Scores must be earned from response evidence. The previous 60/55/50
     // baselines made an unrelated but polished answer appear competent.
-    let relevance = 12 + Math.min(wordCount / 45, 1) * 18 + keywordOverlapRatio * 38 + pointsRatio * 22;
-    let completeness = 8 + lengthRatio * 28 + pointsRatio * 52 + Math.min(metrics_cited.length, 2) * 4;
-    let competency_match = 10 + pointsRatio * 62 + keywordOverlapRatio * 20 + Math.min(metrics_cited.length, 2) * 4;
-    let technical_depth = 8 + pointsRatio * 58 + Math.min(metrics_cited.length, 2) * 8 + (wordCount >= 70 ? 8 : 0);
+    let relevance = 10 + keywordOverlapRatio * 30 + requirementCoverage * 42 + pointsRatio * 12;
+    let completeness = 10 + lengthRatio * 18 + requirementCoverage * 48 + (measurement_plan_present ? 12 : 0) + (outcome_present ? 20 : 0);
+    let competency_match = 10 + requirementCoverage * 45 + pointsRatio * 25 + (personal_contribution_clear ? 10 : 0) + (measurement_plan_present ? 10 : 0);
+    let technical_depth = 8 + requirementCoverage * 42 + pointsRatio * 28 + Math.min(metrics_cited.length, 2) * 6 + (wordCount >= 70 ? 8 : 0);
 
     if (!answered_prompt) relevance = Math.min(relevance, 42);
-    if (wordCount < 25) {
+    if (wordCount < 12) {
       relevance = Math.min(relevance, 30);
       completeness = Math.min(completeness, 24);
       competency_match = Math.min(competency_match, 28);
@@ -156,7 +183,7 @@ Extract verbatim citations from the response and map them to the rubric checklis
       strengths.push(`Hit critical expected rubric points: ${key_points_covered.slice(0, 2).join('; ')}.`);
     }
 
-    if (metrics_cited.length === 0) {
+    if (metrics_cited.length === 0 && !measurement_plan_present) {
       gaps.push("Lack of numerical grounding. Quantify your impact with at least one measurable data point (%, time saved, latency).");
     }
 
@@ -180,6 +207,7 @@ Extract verbatim citations from the response and map them to the rubric checklis
       strengths,
       gaps,
       evidence
+      , question_requirements, measurement_plan_present, outcome_present, personal_contribution_clear
     };
   }
 }

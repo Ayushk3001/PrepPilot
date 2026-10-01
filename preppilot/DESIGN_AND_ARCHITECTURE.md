@@ -1,117 +1,137 @@
-# ElevateAI: Multi-Agent Intelligent Interview & Communication Coaching System
-## Enterprise Technical Architecture, System Design & Evaluation Report
+# Preppilot Design and Architecture Notes
 
-**Candidate:** Prodapt FTE Conversion Candidate  
-**Project Track:** AI-Powered Autonomous Communication & Interview Coaching  
-**Target Deployment:** Vercel (Production Cloud Microservice) / Render  
-**Repository Version:** v1.0.0 Enterprise Ready  
+This document records the design system and implementation decisions visible in the current codebase. It is a companion to [ARCHITECTURE.md](./ARCHITECTURE.md), which focuses on runtime data flow and boundaries.
 
----
+## Product identity
 
-## 1. Executive Summary
+The repository package is `preppilot`. The UI and older source strings still contain Cadence/ElevateAI naming in places, so naming is not yet completely standardized. The product experience is an interview-practice workspace centered on resume-grounded questions, typed or spoken answers, evidence-based feedback, session history, recurring-gap analysis, and a practice plan.
 
-Traditional interview preparation systems provide static questions and canned sample answers. They fail to evaluate a candidate’s dynamic communication clarity, vocal tone, pacing, filler-word frequency, structured thinking (STAR methodology), or role-specific domain depth.
+## User journey
 
-**ElevateAI** is an enterprise-grade autonomous coaching platform built with a **5-Agent Distributed Architecture**. It enables candidates across Telecom (Prodapt OSS/BSS, 5G), Fullstack, Cloud, AI, and Leadership tracks to practice verbal or written interview responses, receive rigorous multi-dimensional evaluations, inspect live Agent-to-Agent (A2A) message traces, and follow an empirical, longitudinal improvement roadmap.
-
----
-
-## 2. End-to-End System Architecture
-
-### 2.1 Complete Data Processing Pipeline
-
-```
-Candidate Profile ──► [ Interview Question Agent ] ──► Question Bank (5 Stages)
-                            │
-                            ▼
-Candidate Response ──► [ Dual STT & Acoustic Analyzer ] ──► (WPM, Duration, Filler Words)
-                            │
-               ┌────────────┴────────────┐
-               ▼ (Parallel Dispatch)     ▼
-  [ Communication Analysis Agent ]   [ Content Evaluation Agent ]
-  • Tone, Clarity, Conciseness       • Domain Depth, Accuracy
-  • Verbal crutch diagnostics        • Grounded quote extraction
-               │                         │
-               └────────────┬────────────┘
-                            ▼ (Agent Handoff)
-               [ STAR Structure Agent ]
-               • Situation, Task, Action, Result
-               • Quantifiable metric verification
-                            │
-                            ▼ (A2A Deliberation & Consensus)
-               [ Lead Interview Coach Agent ]
-               • Holistic Rubric Scoring (0-100) & Next-Stage Verdict
-               • Improved Model Answer Rewrite & Voice TTS Narration
-               • Adaptive Follow-Up Probing Question
-               • Longitudinal Improvement Plan & Gap Tracking
-                            │
-               ┌────────────┴────────────┐
-               ▼                         ▼
-   [ Session Analytics Store ]   [ LLM-as-a-Judge Benchmark Engine ]
-   • Longitudinal gap trends     • G-Eval rubric evaluation
-   • Spider/Radar metrics        • Zero-failure fallback guarantee
+```text
+Landing
+  → local signup/login
+  → resume upload or profile editing
+  → practice setup
+  → live interview session
+  → answer feedback and adaptive follow-up
+  → saved session history
+  → improvement plan and assessment
 ```
 
----
+| Route | Current responsibility |
+|---|---|
+| `/` | Landing page and product explanation |
+| `/signup`, `/login` | Browser-local account flow |
+| `/onboarding/resume` | Upload, extraction status, parser diagnostics |
+| `/onboarding/profile` | Review/edit canonical candidate profile |
+| `/app` | Dashboard, score trends, goals and recent activity |
+| `/app/practice` | Role, competency, difficulty and round setup |
+| `/app/session` | Interview loop, response input, feedback and traces |
+| `/app/sessions` | Searchable session history and score details |
+| `/app/plan` | Recurring gaps, roadmap, resources and MCQ assessment |
+| Landing agent sections and shared components | Agent/pipeline explanation in the landing experience |
 
-## 3. The 5 Specialist Autonomous Agents (Task 3 Specification)
+## Visual design language
 
-| Agent Name | Architectural Role & Responsibilities | Key Outputs / Telemetry |
-| :--- | :--- | :--- |
-| **1. Interview Question Agent** | Selects or dynamically synthesizes stage-appropriate questions based on candidate profile (skills, role, YOE). | Question ID, stage taxonomy, competency tags, expected criteria rubrics. |
-| **2. Communication Analysis Agent** | Analyzes vocal clarity, conciseness, pacing, and emotional tone. Detects filler words (`um`, `uh`, `like`, `you know`). | Clarity score, conciseness score, tone classification, verbal crutch critiques. |
-| **3. Content Evaluation Agent** | Evaluates technical accuracy, domain depth (e.g. 5G SA, OSS/BSS, Kafka, Saga pattern), and extracts verbatim evidence quotes. | Technical depth score, completeness score, grounded citations, missing knowledge items. |
-| **4. STAR Response Structure Agent** | Specialized evaluator for behavioral and scenario questions. Deconstructs responses into Situation, Task, Action, Result. | Component scores, ownership validation, quantifiable metric flag (`quantifiable: true/false`). |
-| **5. Lead Interview Coach Agent** | Master orchestrator. Aggregates specialist agent payloads, resolves critiques, formulates final verdict, writes model answer, and plans follow-up. | Overall score (0-100), verdict, improved rewritten answer, adaptive follow-up, 3-part improvement plan. |
+The UI uses a deliberately editorial, high-contrast visual language:
 
----
+- warm paper/off-white surfaces;
+- near-black ink and strong borders;
+- terracotta, sage, ochre, and lavender accents;
+- oversized display typography paired with compact sans-serif utility text;
+- rectangular cards, score rings, metric panels, and dense dashboard layouts;
+- motion for onboarding transitions, stepper progress, and panel reveals;
+- responsive layouts implemented with CSS and Tailwind utility classes.
 
-## 4. Key Architectural Design Decisions & Trade-Offs
+Global styling lives in `src/app/globals.css`. Components use Tailwind CSS v4 utilities plus project-specific CSS tokens. Framer Motion is used for selected UI transitions; it is not part of the server architecture.
 
-### Decision 1: Decoupled Speech-to-Text (STT) + Multi-Agent Engine vs Native Speech-to-Speech (STS)
-*   **The Trade-off:** Native STS models (e.g. OpenAI Realtime WebRTC) provide natural conversational interruption but are black-box token streams. They cost ~$0.30/min, cannot perform structured multi-agent rubric parsing, and frequently fail under corporate firewalls.
-*   **Our Solution:** We decoupled voice intake into **Browser Web Speech API (zero-latency, free) + Whisper Fallback** followed by the 5-Agent parallel reasoning pipeline. This enables exact verbatim quote extraction, deterministic acoustic metrics (WPM, filler-word frequency), and cut token costs by **95%**.
+## UI composition
 
-### Decision 2: Parallel Specialist Dispatch with Lead Coach Convergence
-*   **The Trade-off:** Sequential agent chains (Agent A $\rightarrow$ Agent B $\rightarrow$ Agent C) accumulate multiplicative latency (8–12 seconds).
-*   **Our Solution:** The orchestrator dispatches the Communication, Content, and STAR agents in **parallel `Promise.all`**, reducing specialist evaluation latency to $<1.5$ seconds. The Lead Coach then performs A2A aggregation in a single fast synthesis pass.
+```text
+App layout
+├─ global styles and metadata
+├─ auth context/providers
+├─ landing feature components
+└─ authenticated app layout
+   ├─ dashboard
+   ├─ practice setup
+   ├─ session workspace
+   │  ├─ question/answer panel
+   │  ├─ speech/transcription controls
+   │  ├─ agent stepper
+   │  ├─ score and STAR feedback
+   │  └─ trace/pipeline details
+   ├─ session history
+   └─ improvement plan
+```
 
-### Decision 3: Deterministic Fallback Engine (Zero-Failure Guarantee)
-*   **The Trade-off:** Relying solely on external cloud LLM APIs creates a single point of failure (rate limits, credit depletion, network timeouts) during live client or panel evaluations.
-*   **Our Solution:** ElevateAI features a built-in **High-Fidelity Offline Rule Engine**. If no API key is supplied, or if the OpenAI API encounters any 429/500 exception, the platform automatically falls back without crashing, maintaining a 100% reliable demo.
+Shared visual components are in `src/components`. Feature-owned components are in `src/features`. The largest interaction surfaces remain page-owned because they coordinate browser state, route calls, and presentation state together.
 
----
+## Design contracts
 
-## 5. Empirical Evaluation & Quality Framework (Task 4)
+### Candidate profile
 
-ElevateAI embeds an automated **LLM-as-a-Judge Benchmark Runner** testing 5 standard interview scenarios:
-1. **Question Relevance Score (0-100%):** Validates that questions match candidate seniority and role competency.
-2. **Evidence Groundedness Score (0-100%):** Verifies that the evaluator's claims cite exact verbatim quotes from the candidate’s transcript rather than hallucinating weaknesses.
-3. **Feedback Consistency Score (0-100%):** Measures score variance across repeated evaluations using low LLM temperatures ($T=0.2$ for specialists, $T=0.3$ for coach).
-4. **Actionable Usefulness Index (0-100%):** Measures whether recommendations provide concrete frameworks (e.g., STAR, PREP) and rewritten answer demonstrations.
+`CandidateProfile` in `src/lib/api.ts` is the compatibility boundary between onboarding, browser storage, question generation, and evaluation. Its canonical fields are:
 
----
+```text
+basics, education, workExperience, internships, projects,
+technicalSkills, softSkills, technologies, certifications,
+achievements, domains
+```
 
-## 6. Deployment Guide
+Legacy aliases such as `name`, `experience`, and `technical_skills` remain for compatibility with older UI and agent code.
 
-### Vercel Deployment (Recommended)
-1. Push this repository to GitHub:
-   ```bash
-   git init
-   git add .
-   git commit -m "feat: ElevateAI enterprise platform"
-   git remote add origin https://github.com/your-username/elevate-ai.git
-   git push -u origin main
-   ```
-2. Import the project into **Vercel**:
-   - Framework Preset: **Next.js**
-   - Root Directory: `./`
-   - Environment Variables (Optional): `OPENAI_API_KEY=sk-...` (can also be entered dynamically in the app UI)
-3. Click **Deploy**. Your application will be live at `https://elevate-ai-[hash].vercel.app`.
+### Interview state
 
-### Local Execution
+`InterviewSessionState` includes round configuration, question counters, timing, history, resume knowledge, evidence coverage, and completion state. `InterviewController` is the policy boundary for time and question limits.
+
+### Evaluation output
+
+`CoachingFeedback` is the stable output consumed by the session UI and persistence layer. It contains scores, verdict, strengths, improvement areas, STAR breakdown, content evaluation, communication evaluation, rewrite guidance, model answer, adaptive follow-up, evidence, and recurring gaps.
+
+Structured provider output is accepted only after parsing, contract validation, and faithfulness checks.
+
+## Important implementation decisions
+
+### Browser-first storage
+
+The current product uses browser storage for a low-friction working prototype: profiles, local accounts, active sessions, completed sessions, roadmap caches, and milestone state are kept in the browser. This makes the demo usable without a database, but it is not cross-device or multi-user durable storage.
+
+### Server-side provider boundary
+
+LLM credentials are used by server-side modules and route handlers. `src/server/ai/llmClient.ts` normalizes OpenAI-compatible provider calls, response shapes, timeouts, retries, model selection, and safe diagnostics.
+
+### Deterministic fallback
+
+The product remains usable without a provider. Resume parsing, question generation, communication analysis, content analysis, STAR analysis, coaching, and roadmap generation each have deterministic or curated fallback behavior. This is a reliability feature, not a claim that every result is equivalent to an LLM result.
+
+### Parallel evaluation
+
+Communication, content, and STAR analysis are independent for a given answer, so the orchestrator dispatches them with `Promise.all`. The coach runs after those results are available. This reduces evaluation latency while preserving a single final feedback contract.
+
+### Grounded coaching
+
+The evaluator tracks candidate-answer evidence and the resume evidence graph. Faithfulness validation removes unsupported metrics, technologies, ownership claims, and other invented facts from final coaching output.
+
+### Curated learning resources
+
+The resource library is a static catalog. `recommendedTopics()` maps score weaknesses and recurring gaps to resource topics; the plan UI can supplement deterministic roadmap generation with an LLM-generated roadmap and milestone questions.
+
+## Testing and quality model
+
+The repository uses Node’s test runner through `tsx`:
+
 ```bash
-npm install
-npm run dev
-# Open http://localhost:3000
+npm test
 ```
+
+Tests cover resume parsing and normalization, question generation, interview limits and graph behavior, evaluation contracts, calibration, faithfulness, fallback behavior, persistence compatibility, and active evaluation behavior.
+
+The benchmark route provides a product-level benchmark suite using static test cases. It measures relevance, analysis quality, evidence groundedness, usefulness, consistency, latency, and pass/warning status. It should be read as an application benchmark, not as an independent scientific evaluation framework.
+
+## Operational boundaries
+
+The application currently has no database, background worker, object storage, message broker, server authentication provider, or server-side audio ingestion. Deployment is therefore a single Next.js deployment with environment variables for the OpenAI-compatible provider.
+
+If the project becomes multi-user and production-durable, the first architectural additions should be server identity, a database-backed profile/session model, durable resume storage, and server-side authorization around every route. Those are future changes, not current components.

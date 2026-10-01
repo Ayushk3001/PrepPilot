@@ -427,7 +427,10 @@ export default function Plan() {
         setRoadmap(cached);
         setRoadmapSource("CACHED · GROUNDED IN SESSION DATA");
       } else {
-        void generateRoadmap(activeSessions, currentProfile, cacheKey);
+        // Plan is a read-only review surface. Roadmap items are already
+        // grounded from stored session evidence; do not create a new LLM call
+        // merely by opening this page.
+        setRoadmapSource("SESSION EVIDENCE · DETERMINISTIC REVIEW");
       }
     }
   }, []);
@@ -811,11 +814,37 @@ Note: 'answer' must be the 0-based integer index of the correct option.`
                                 <span>TURN 0{tIdx + 1} PROBE:</span>
                                 <span className="text-[#127533]">SCORE {turn.result?.overall || 65}%</span>
                               </div>
-                              <p className="font-serif italic text-ink font-semibold">
-                                "{turn.question?.text || turn.questionText || "Question text"}"
+                              {turn.result?.starApplicable && (
+                                <div className="border border-line bg-white p-3 text-[10px] uppercase">
+                                  <strong className="block mb-2 text-ink">STAR ANALYSIS</strong>
+                                  <div className="grid grid-cols-4 gap-2">
+                                    {(['situation', 'task', 'action', 'result'] as const).map((part) => (
+                                      <span key={part} className={turn.result?.star?.[part]?.detected ? 'text-[#127533]' : 'text-[#FF5C35]'}>
+                                        {part}: {turn.result?.star?.[part]?.detected ? '✓' : '✕'}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              <div className="grid grid-cols-5 gap-2 text-[10px] uppercase">
+                                {[
+                                  ['Relevance', turn.result?.scores?.relevance],
+                                  ['Clarity', turn.result?.scores?.clarity],
+                                  ['Structure', turn.result?.scores?.structure],
+                                  ['Completeness', turn.result?.scores?.completeness],
+                                  ['Communication', turn.result?.scores?.communication],
+                                ].map(([label, score]) => (
+                                  <div key={String(label)} className="border border-line bg-white p-2 text-center">
+                                    <span className="block text-mut">{label}</span>
+                                    <strong className="text-ink">{score ?? '—'}%</strong>
+                                  </div>
+                                ))}
+                              </div>
+                              <p className="font-serif italic text-ink font-semibold whitespace-pre-wrap break-words">
+                                "{turn.question?.text || turn.question?.question || turn.questionText || "Question text"}"
                               </p>
-                              <div className="p-2.5 bg-white border border-line text-ink2 font-sans text-xs">
-                                <strong>CANDIDATE ANSWER SNIPPET:</strong> {turn.answer?.slice(0, 180)}...
+                              <div className="p-2.5 bg-white border border-line text-ink2 font-sans text-xs whitespace-pre-wrap break-words">
+                                <strong>CANDIDATE ANSWER:</strong>{" "}{turn.answer || "No candidate answer was stored for this turn."}
                               </div>
                               {turn.result?.improvements && (
                                 <div className="border-l-3 border-[#FF5C35] pl-2.5 text-[11px] text-ink font-sans space-y-1">
@@ -827,6 +856,10 @@ Note: 'answer' must be the 0-based integer index of the correct option.`
                                   </ul>
                                 </div>
                               )}
+                              <div className="border-l-3 border-[#127533] bg-[#E2F8E7] p-3 mt-3 text-ink font-sans text-xs leading-relaxed whitespace-pre-wrap break-words">
+                                <strong className="font-mono text-[11px] uppercase block text-[#127533]">EXPECTED / BETTER ANSWER:</strong>
+                                <p className="mt-1">{turn.result?.expected_answer || turn.result?.expectedAnswer || "No expected answer was stored for this historical turn."}</p>
+                              </div>
                             </div>
                           ))
                         ) : (

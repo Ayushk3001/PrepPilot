@@ -15,7 +15,7 @@ export interface CoachAgentInput {
 }
 
 export interface CoachAgentOutput {
-  evaluationSource?: 'llm' | 'deterministic_fallback';
+  evaluationSource?: 'llm' | 'llm_retry' | 'deterministic_fallback';
   overallScore: number; // 0-100
   verdict: string;
   dimensionScores: {
@@ -50,23 +50,24 @@ Generate an overall score, evidence-grounded strengths and weaknesses, an improv
     const { questionOutput, candidateResponse, commOutput, contentOutput, starOutput } = input;
     const q = questionOutput.question;
 
-    // Dimension weights:
-    // Relevance 20%, Clarity 20%, Structure 25%, Completeness 15%, Communication 20%
+    const starApplicable = Boolean(questionOutput.metadata.expectSTAR && !/\b(?:introduce yourself|why are you|motivation|career|technical)\b/i.test(q.question));
+    // PRD weighting: content/relevance 30%, communication 25%, completeness 20%,
+    // STAR structure 15%, competency/evidence 10%. For non-STAR questions the
+    // structure weight is redistributed proportionally across applicable axes.
     const dimensionScores = {
       relevance: contentOutput.relevance,
       clarity: commOutput.clarity,
-      structure: starOutput.structure_score,
+      // Non-STAR organization remains visible as a communication-derived
+      // presentation signal, but is excluded from the overall score below.
+      structure: starApplicable ? (starOutput.structure_score ?? 0) : Math.round((commOutput.clarity + commOutput.conciseness) / 2),
       completeness: contentOutput.completeness,
       communication: commOutput.communication_quality,
     };
 
-    let overallScore = Math.round(
-      dimensionScores.relevance * 0.20 +
-      dimensionScores.clarity * 0.20 +
-      dimensionScores.structure * 0.25 +
-      dimensionScores.completeness * 0.15 +
-      dimensionScores.communication * 0.20
-    );
+    const competency = contentOutput.competency_match;
+    let overallScore = starApplicable
+      ? Math.round(dimensionScores.relevance * 0.30 + dimensionScores.communication * 0.25 + dimensionScores.completeness * 0.20 + dimensionScores.structure * 0.15 + competency * 0.10)
+      : Math.round(dimensionScores.relevance * (0.30 / 0.85) + dimensionScores.communication * (0.25 / 0.85) + dimensionScores.completeness * (0.20 / 0.85) + competency * (0.10 / 0.85));
 
     // Guardrails prevent fluent non-answers from receiving a passing overall
     // score merely because they are concise or contain no fillers.
@@ -167,10 +168,10 @@ Generate an overall score, evidence-grounded strengths and weaknesses, an improv
     const followUpQuestions: string[] = [];
 
     // Gaps-driven followups:
-    if (starOutput.result.status === 'missing' || starOutput.result.status === 'weak') {
+    if (starApplicable && (starOutput.result.status === 'missing' || starOutput.result.status === 'weak')) {
       followUpQuestions.push("You described the technical changes, but what was the exact quantifiable metric or percentage improvement achieved?");
     }
-    if (starOutput.action.status === 'weak') {
+    if (starApplicable && starOutput.action.status === 'weak') {
       followUpQuestions.push("You mentioned 'we worked on the solution' — what was the specific component you personally architected or coded?");
     }
     if (contentOutput.metrics_cited.length === 0) {
@@ -199,8 +200,8 @@ Generate an overall score, evidence-grounded strengths and weaknesses, an improv
     // Identify primary recurring gap key
     let recurringGapKey: CoachAgentOutput['recurringGapKey'];
     if (commOutput.filler_words > 2) recurringGapKey = 'fillers';
-    else if (starOutput.result.status === 'missing' || contentOutput.metrics_cited.length === 0) recurringGapKey = 'results';
-    else if (starOutput.structure_score < 70) recurringGapKey = 'structure';
+    else if ((starApplicable && starOutput.result.status === 'missing') || contentOutput.metrics_cited.length === 0) recurringGapKey = 'results';
+    else if (starApplicable && (starOutput.structure_score ?? 0) < 70) recurringGapKey = 'structure';
     else if (commOutput.hedging > 2) recurringGapKey = 'hedges';
     else if (commOutput.word_count < 90) recurringGapKey = 'thin';
 

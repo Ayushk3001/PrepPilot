@@ -1,287 +1,165 @@
-# Cadence — AI-Powered Multi-Agent Communication & Interview Coaching System
+# Preppilot
 
-[![Next.js](https://img.shields.io/badge/Next.js-16.3-black?style=flat&logo=next.js)](https://nextjs.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?style=flat&logo=typescript)](https://www.typescriptlang.org/)
-[![TailwindCSS](https://img.shields.io/badge/TailwindCSS-v4-38bdf8?style=flat&logo=tailwindcss)](https://tailwindcss.com/)
-[![License](https://img.shields.io/badge/Capstone-Full%20PRD%20Compliance-emerald)](#)
+Preppilot is a Next.js application for resume-grounded interview practice and communication coaching. Candidates upload a resume, practice typed or spoken answers, receive structured feedback from specialist evaluators, review session trends, and follow a gap-based improvement plan.
 
-> **Cadence** is an enterprise AI communication and interview coaching platform designed to elevate candidate verbal communication, structured reasoning (STAR methodology), technical accuracy, and executive presence. Built on an observable 5-specialist agent architecture with real-time speech transcription, structured Agent-to-Agent (A2A) handoffs, longitudinal gap tracking, and an automated LLM-as-a-judge benchmark suite.
+The implementation is a single Next.js application with browser-first persistence. For the source-based architecture description, see [ARCHITECTURE.md](./ARCHITECTURE.md). For product/UI decisions, see [DESIGN_AND_ARCHITECTURE.md](./DESIGN_AND_ARCHITECTURE.md).
 
-Source-code boundaries and dependency rules are documented in [ARCHITECTURE.md](./ARCHITECTURE.md#source-code-organization).
+## What is implemented
 
----
+- PDF, DOCX, and text resume ingestion;
+- LLM-assisted resume structuring with deterministic parser fallback;
+- canonical candidate profile validation and resume evidence graph;
+- HR, behavioral, technical, situational, leadership, and mock interview rounds;
+- resume-grounded questions and adaptive follow-ups;
+- browser Web Speech API transcription when available, with typed input;
+- transcript-derived WPM, filler-word, and pacing metrics;
+- parallel communication, content, and STAR evaluation;
+- coach synthesis with score, verdict, evidence, rewrite, and follow-up;
+- faithfulness and structured-output validation;
+- browser-persisted session history and recurring-gap metrics;
+- curated learning resources, roadmap generation, and milestone MCQs;
+- optional LLM benchmark execution and interview/LLM diagnostics;
+- deterministic fallback behavior when no provider is configured or a provider response is unusable.
 
-## 🌟 Architecture & Data Processing Pipeline
+## Runtime architecture
 
-```
-Candidate Profile
-   │ (Skills, Projects, Target Role, Experience)
-   ▼
-┌──────────────────────────────────────────────┐
-│       Agent 1: Interview Question Agent      │
-│  - Understands candidate profile & role      │
-│  - Selects/generates calibrated question     │
-│  - Establishes rubric criteria & STAR target │
-└──────────────────────┬───────────────────────┘
-                       │
-                       ▼
-               Interview Question
-                       │
-                       ▼
-               Candidate Response
-            (Voice STT or Typed Text)
-                       │
-         ┌─────────────┴─────────────┐
-         ▼                           ▼
-┌──────────────────┐       ┌──────────────────┐
-│     Agent 2:     │       │     Agent 3:     │
-│  Communication   │       │Content Evaluation│
-│  Analysis Agent  │       │      Agent       │
-│ - Clarity        │       │ - Relevance      │
-│ - Conciseness    │       │ - Completeness   │
-│ - Fillers/Hedges │       │ - Evidence & ROI │
-│ - Speech Cadence │       │ - Tech Depth     │
-└────────┬─────────┘       └────────┬─────────┘
-         │                          │
-         └─────────────┬────────────┘
-                       ▼
-       ┌──────────────────────────────┐
-       │           Agent 4:           │
-       │      STAR Structure Agent    │
-       │ - Situation, Task, Action,   │
-       │   Result decomposition       │
-       │ - Grounded verbatim quotes   │
-       └───────────────┬──────────────┘
-                       │
-                       ▼ A2A Handoff
-       ┌──────────────────────────────┐
-       │           Agent 5:           │
-       │     Lead Interview Coach     │
-       │ - Consolidates all 4 agents  │
-       │ - Calculates weighted score  │
-       │ - Writes improved model      │
-       │   answer & hit points        │
-       │ - Probes with adaptive       │
-       │   follow-up questions        │
-       └───────────────┬──────────────┘
-                       │
-         ┌─────────────┴─────────────┐
-         ▼                           ▼
-┌──────────────────┐       ┌──────────────────┐
-│ Coaching Report  │       │ Follow-Up Drills │
-│ - Evidence quotes│       │ - Response-based │
-│ - STAR status    │       │ - Targeted depth │
-│ - A2A traces     │       │ - Instant replay │
-└────────┬─────────┘       └────────┬─────────┘
-         │                          │
-         └─────────────┬────────────┘
-                       ▼
-┌──────────────────────────────────────────────┐
-│          Multi-Session Tracking Store        │
-│  - Longitudinal recurring gap analysis       │
-│  - Communication index & streak calculations │
-└──────────────────────┬───────────────────────┘
-                       │
-                       ▼
-┌──────────────────────────────────────────────┐
-│         Personalized Improvement Plan        │
-│  - Milestone roadmaps based on real gaps     │
-│  - Targeted exercises & prep library         │
-└──────────────────────────────────────────────┘
+```text
+Browser pages and components
+  → Next.js route handlers
+  → domain modules and agents
+  → OpenAI-compatible LLM provider when configured
+  → deterministic local fallback when needed
+  → browser session/profile storage
 ```
 
----
+Answer evaluation:
 
-## 🛠️ Tech Stack & Key Technologies
+```text
+Question + candidate answer
+  → Communication analysis ┐
+  → Content evaluation     ├→ Coach synthesis → contract/faithfulness checks → UI feedback
+  → STAR analysis          ┘
+```
 
-- **Framework**: Next.js 16 (Turbopack, App Router, React 19)
-- **Language**: TypeScript 5 (Strict Typing)
-- **Styling**: Vanilla CSS & TailwindCSS v4 with dedicated tokens (`terra`, `paper`, `coal`, `sage`, `ochre`)
-- **Typography**: Editorial fonts (`Newsreader`, `Fraunces`, `DM Sans`, `JetBrains Mono`)
-- **Animations**: Framer Motion & CSS micro-animations
-- **Speech Recognition**: In-browser Web Speech API (`SpeechRecognition`) with voice waveform telemetry
-- **Multi-Agent Pipeline**: Distributed 5-agent pipeline with observable A2A messaging bus
-- **LLM Provider Abstraction**: Pluggable provider system (OpenAI GPT-4o, Custom Providers, Deterministic Zero-Failure Engine)
-- **Persistence**: Structured local storage with session history, longitudinal trends, and profile persistence
+Question generation is a separate flow using `ResumeInterviewerAgent`, a deterministic controller, and a LangGraph workflow. It tracks question limits, duration, history, covered resume topics, and follow-up limits.
 
----
+## Technology
 
-## 🚀 Quick Start Guide
+- Next.js 16.3 App Router
+- React 19
+- TypeScript 5
+- Tailwind CSS v4 and project CSS tokens
+- Framer Motion for selected UI transitions
+- LangGraph for the interview question workflow
+- OpenAI-compatible SDK/provider adapter
+- Mammoth for DOCX extraction
+- `pdfjs-dist`/`pdf-parse` extraction paths
+- Node test runner through `tsx`
 
-### Prerequisites
-- Node.js 18+ (tested on Node.js v20+)
-- npm or pnpm
+## Requirements
 
-### 1. Installation
+- Node.js 18 or newer; Node.js 20+ is recommended
+- npm
+- Optional OpenAI-compatible provider credentials for LLM-backed behavior
+
+## Setup
+
 ```bash
-git clone <repo-url>
-cd Capstone
 npm install
 ```
 
-### 2. Environment Configuration
-The system is pre-configured with the project's OpenAI-compatible endpoint. Values are saved in `.env.local`:
+Copy `.env.example` to `.env.local` and configure the provider if desired:
+
 ```env
 OPENAI_API_KEY=your_key_here
 OPENAI_BASE_URL=https://your-openai-compatible-endpoint/v1
 OPENAI_MODEL=your-model-name
 LANGSMITH_API_KEY=
 LANGSMITH_TRACING=false
-LANGSMITH_PROJECT=cadence
+LANGSMITH_PROJECT=preppilot
 ```
 
-To run a streaming test from the shell:
+The application can run without an API key using deterministic and curated fallbacks. Do not commit real credentials.
+
+## Commands
+
 ```bash
-node scripts/test_llm.mjs
+npm run dev       # start local development server
+npm run build     # create a production build
+npm run start     # serve the production build
+npm run lint      # run ESLint
+npm test          # run the automated test suite
 ```
-Or in Python:
+
+Open [http://localhost:3000](http://localhost:3000) after starting the development server.
+
+## Routes
+
+| Route | Purpose |
+|---|---|
+| `/` | Landing page |
+| `/signup`, `/login` | Browser-local account flow |
+| `/onboarding/resume` | Resume upload and extraction |
+| `/onboarding/profile` | Profile review and editing |
+| `/app` | Candidate dashboard |
+| `/app/practice` | Practice setup |
+| `/app/session` | Live interview session and feedback |
+| `/app/sessions` | Session history and trends |
+| `/app/plan` | Improvement roadmap, resources, and assessment |
+| Landing agent sections | Agent/pipeline explanation in the landing experience |
+
+## API routes
+
+| Route | Purpose |
+|---|---|
+| `POST /api/onboarding/resume` | Extract and normalize a resume |
+| `GET/PUT /api/onboarding/profile` | Process-level profile helper; not durable multi-user storage |
+| `POST /api/interviewer/next-question` | Run the LangGraph next-question flow |
+| `POST /api/agents/generate-question` | Select or generate a dataset/profile question |
+| `POST /api/agents/evaluate` | Run the multi-agent answer evaluation |
+| `POST /api/llm/chat` | Server-side OpenAI-compatible chat proxy |
+| `POST /api/benchmark/run` | Run benchmark cases through the evaluation pipeline |
+
+## Storage model
+
+The current prototype stores most user-facing state in the browser:
+
+- profile, local accounts, token, roadmap cache, and mastered milestones in `localStorage`;
+- active interview state and opening-question cache in `sessionStorage`;
+- up to 50 completed session records in browser storage;
+- resume snapshots and the profile API helper in process memory on the server.
+
+There is currently no database, durable backend account system, object storage, queue, or server-side audio store. Data is therefore device/browser scoped and can be lost when browser storage is cleared or the server process restarts.
+
+## Repository map
+
+```text
+src/app/       pages, layouts, route handlers, global styles
+src/agents/    question, evaluation, coach, and fallback modules
+src/server/    LLM provider and benchmark services
+src/lib/       resume, interview, storage, dataset, audio, auth, resources
+src/components/ shared UI components
+src/features/  landing and auth feature components
+src/data/      interview and benchmark datasets
+src/types/     shared contracts
+tests/         automated behavior and contract tests
+```
+
+## Verification
+
+Run:
+
 ```bash
-python3 scripts/test_llm.py
+npm test
 ```
 
-### 3. Start Development Server
-```bash
-npm run dev
-```
-Open **[http://localhost:3000](http://localhost:3000)** in your browser.
+The test suite exercises the resume pipeline, interview orchestration, evaluation contracts, score calibration, evidence faithfulness, fallback behavior, and storage compatibility. Provider-backed behavior still depends on the configured provider and network availability; deterministic fallback behavior is tested independently.
 
-### 4. Build for Production
-```bash
-npm run build
-npm run start
-```
+## Current limitations
 
----
-
-## 📂 Complete Application Routes
-
-| Route | View Description |
-| :--- | :--- |
-| `/` | Editorial landing page with hero, interactive demo, agent showcase, bento grid, and testimonials |
-| `/signup` | User authentication registration flow |
-| `/login` | Candidate sign-in flow |
-| `/onboarding/resume` | 4-stage animated resume ingestion pipeline (`Uploading` → `Reading` → `Extracting` → `Profile`) |
-| `/onboarding/profile` | 10-section Candidate AI Profile editor with skills, projects, certifications, and target roles |
-| `/app` | Main dashboard displaying candidate index, weekly goals, radar breakdown, and quick practice CTA |
-| `/app/practice` | Practice Arena with target role selection, competency focus, difficulty, and preset profiles |
-| `/app/session` | Live Interview Session supporting voice/text responses, 5-agent evaluation, STAR breakdown, Coach rewrite, follow-up drilling, and **real A2A message traces** |
-| `/app/sessions` | Multi-session history with search, competency filters, transcript review, and score distributions |
-| `/app/plan` | Personalized Improvement Plan generated from recurring gaps across multiple sessions |
-| `/app/agents` | Technical demonstration explorer showing agent schemas, interactive pipeline debugger, live A2A message payloads, and LLM-as-a-judge benchmark runner |
-
----
-
-## 🤖 The 5 Specialist Autonomous Agents
-
-1. **Interview Question Agent**:
-   - Analyzes candidate profile (skills, projects, experience) and target role.
-   - Selects or synthesizes calibrated questions preventing repetitive drills.
-   - Defines expected competency and evaluation criteria.
-2. **Communication Analysis Agent**:
-   - Measures clarity, conciseness, verbal fillers (`um`, `uh`, `like`), hedging, and sentence cadence.
-   - Generates structured JSON with grounded evidence quotes.
-3. **Content Evaluation Agent**:
-   - Determines whether the response answered the question asked.
-   - Assesses technical depth, completeness, and quantified metric citations.
-4. **STAR Response Structure Agent**:
-   - Deconstructs behavioral and situational answers into Situation, Task, Action, and Result.
-   - Categorizes each component as `detected`, `weak`, or `missing` with verbatim evidence.
-5. **Lead Interview Coach Agent**:
-   - Consolidates all specialist outputs via A2A handoff into unified coaching.
-   - Delivers overall score, verdict, strengths, actionable improvements, an improved model rewrite, and response-dependent follow-up questions.
-
----
-
-## 📡 Agent-to-Agent (A2A) Communication Trace
-
-Inter-agent transactions are logged with timestamps, sender, receiver, execution latency, and full structured JSON payloads:
-```json
-{
-  "from": "comm_agent",
-  "to": "coach_agent",
-  "payload": {
-    "clarity": 85,
-    "conciseness": 78,
-    "filler_words": 1,
-    "hedging": 0,
-    "strengths": ["Clear signposting and direct opening"],
-    "improvements": ["Elaborate on the quantified impact of the solution"],
-    "evidence": ["'I identified that our ingestion throughput was bottlenecked...'"]
-  },
-  "timestamp": 1727438400000,
-  "status": "delivered",
-  "latencyMs": 14
-}
-```
-View live A2A traces in `/app/session` (A2A Trace tab) and `/app/agents` (Live A2A Message Payloads).
-
----
-
-## 📊 RecruitView Dataset Integration
-
-The platform includes an extensible question management system formatted to the **RecruitView** dataset specification:
-```typescript
-interface StructuredQuestion {
-  id: string;
-  question: string;
-  role: 'swe' | 'sse' | 'em' | 'pm' | 'da' | 'sa';
-  competency: 'behavioral' | 'tech-comm' | 'problem' | 'leadership' | 'system-design';
-  difficulty: 'Warm-up' | 'Standard' | 'Senior';
-  questionType: 'Behavioral' | 'Situational' | 'Technical' | 'STAR' | 'Role Alignment';
-  expectedCompetency: string;
-  evaluationCriteria: string[];
-  focus?: string[];
-  modelAnswer?: string;
-  durationSec?: number;
-}
-```
-
-### Dataset Import API
-Programmatically import custom questions via JSON or CSV:
-```typescript
-import { defaultDatasetManager } from "@/lib/dataset/datasetManager";
-
-// Import JSON
-defaultDatasetManager.importFromJSON(customJsonString);
-
-// Import CSV
-defaultDatasetManager.importFromCSV(csvString);
-```
-
----
-
-## 🎯 8-Minute Project Presentation Guide
-
-| Time Window | Segment | Key Demo Actions |
-| :--- | :--- | :--- |
-| **0:00 - 1:30** | **Executive Overview & Problem** | Showcase landing page (`/`). Explain why static flashcards fail and how Cadence's 5-agent pipeline solves this. |
-| **1:30 - 3:00** | **Profile & Question Selection** | Open Candidate Profile (`/onboarding/profile`). Navigate to Practice Arena (`/app/practice`), select role and competency. Show how the Question Agent personalizes the prompt. |
-| **3:00 - 5:00** | **Live Practice Session & Voice STT** | Speak or type a response. Run the 5-Agent Pipeline. Watch the live stepper progress through all 5 agents. |
-| **5:00 - 6:30** | **Evidence-Based Coaching & A2A Trace** | Show the ScoreRing, STAR breakdown with verbatim quotes, and Coach's rewritten model answer. Open the **A2A Trace Tab** to prove real structured data exchange between agents. |
-| **6:30 - 7:30** | **Recurring Gaps & Improvement Plan** | Visit `/app/plan` and `/app/sessions`. Show how multi-session data aggregates recurring patterns (e.g. unquantified results) into personalized milestone drills. |
-| **7:30 - 8:00** | **Agents Explorer & Benchmark Suite** | Visit `/app/agents`. Run the Live Pipeline Debugger and execute the LLM-as-a-judge Benchmark Suite. |
-
----
-
-## 🧪 Comprehensive PRD Compliance Matrix
-
-| Requirement | PRD Status | Implementation Evidence |
-| :--- | :--- | :--- |
-| **Candidate Profile** | ✅ Complete | 10-section profile persisted in storage with skills, projects, and target role (`/onboarding/profile`) |
-| **Role-based Questions** | ✅ Complete | Filterable across Software Engineer, Senior SWE, EM, PM, Data Analyst, Solutions Architect |
-| **Competency Focus** | ✅ Complete | Behavioral, Tech-Comm, Problem Solving, Leadership, System Design |
-| **Difficulty Calibration**| ✅ Complete | Warm-up, Standard, and Senior tiers |
-| **Text Response** | ✅ Complete | Real-time textarea input with word count and filler counter |
-| **Voice Response** | ✅ Complete | Web Speech API STT with live listening toggle and audio state |
-| **Interview Question Agent**| ✅ Complete | `InterviewQuestionAgent.execute()` personalizes questions from candidate profile |
-| **Communication Analysis Agent**| ✅ Complete | `CommunicationAnalysisAgent.execute()` evaluates clarity, conciseness, fillers, and hedges |
-| **Content Evaluation Agent** | ✅ Complete | `ContentEvaluationAgent.execute()` verifies relevance, completeness, and evidence |
-| **STAR Structure Agent** | ✅ Complete | `StarStructureAgent.execute()` deconstructs S-T-A-R with verbatim evidence |
-| **Interview Coach Agent** | ✅ Complete | `InterviewCoachAgent.execute()` consolidates all agents, generates rewrite and follow-ups |
-| **Agent Handoff & A2A** | ✅ Complete | Observable A2A pipeline with message logs, timestamps, and payloads in `/app/session` and `/app/agents` |
-| **Personalized Follow-Ups**| ✅ Complete | Adaptive follow-ups generated from detected gaps in candidate's response |
-| **Recurring Gaps** | ✅ Complete | Multi-session historical aggregation in `store.ts` calculating percentage occurrences |
-| **Improvement Plan** | ✅ Complete | Dynamic milestone roadmap based on actual gap keys (`/app/plan`) |
-| **Evaluation Framework** | ✅ Complete | LLM-as-a-judge benchmark runner with 5 standardized test cases (`/app/agents`) |
-| **Dataset Support** | ✅ Complete | RecruitView schema dataset manager with JSON/CSV import pipelines |
-| **Zero-Failure Fallback**| ✅ Complete | Clean provider abstraction with deterministic rule engine guarantee |
+- local authentication is not a production identity system;
+- profiles and sessions are not cross-device;
+- server profile/cache state is process-local;
+- Web Speech API support varies by browser;
+- plan progress updates roadmap/milestone state but does not yet maintain a durable learned-skills profile;
+- repository naming contains legacy Cadence/ElevateAI references that can be standardized separately.

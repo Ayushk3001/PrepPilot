@@ -12,7 +12,7 @@ export interface CommunicationEvidenceItem {
 }
 
 export interface CommunicationAgentOutput {
-  evaluationSource?: 'llm' | 'deterministic_fallback';
+  evaluationSource?: 'llm' | 'llm_retry' | 'deterministic_fallback';
   clarity: number; // 0-100
   conciseness: number; // 0-100
   communication_quality: number; // 0-100
@@ -110,12 +110,17 @@ Extract verbatim quoted evidence and output structured metrics.`;
     // Compute scores
     // Delivery quality is not a proxy for answer quality. Start from a neutral
     // baseline and reward a sufficiently developed, well-paced explanation.
-    let clarity = 48 + Math.min(wordCount / 70, 1) * 23 - totalFillers * 3 - totalHedges * 2.5;
+    // Fillers are one signal, not a proxy for communication quality. Two
+    // markers in a coherent answer should be a modest deduction; repeated
+    // fillers in a very short answer remain meaningfully penalized.
+    const fillerPenalty = totalFillers <= 2 ? totalFillers * 1 : totalFillers * 2.5;
+    const relativeFillerPenalty = wordCount < 25 ? fillerPenalty * 1.5 : fillerPenalty;
+    let clarity = 56 + Math.min(wordCount / 70, 1) * 19 - relativeFillerPenalty - totalHedges * 2;
     if (avgSentenceLen > 28) clarity -= 8;
     if (avgSentenceLen < 7 && sentences.length > 2) clarity -= 6;
     if (wordCount < 25) clarity = Math.min(clarity, 58);
 
-    let conciseness = 48 + Math.min(wordCount / 55, 1) * 30 - (totalFillers + totalHedges) * 3 - (ramblingSentences.length * 6);
+    let conciseness = 56 + Math.min(wordCount / 55, 1) * 24 - relativeFillerPenalty - totalHedges * 2 - (ramblingSentences.length * 6);
     if (wordCount > 300) conciseness -= 10;
 
     let communication_quality = Math.round(

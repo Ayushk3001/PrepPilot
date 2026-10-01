@@ -47,6 +47,7 @@ export interface MultiAgentPipelineResult {
     action: { detected: boolean; evidence: string };
     result: { detected: boolean; evidence: string };
   };
+  starApplicable?: boolean;
   starFilled: number;
   strengths: string[];
   improvements: string[];
@@ -213,7 +214,7 @@ export class MultiAgentPipeline {
     timings.star = Date.now() - t0Star;
 
     logA2A('star_agent', 'coach_agent', {
-      structureScore: starOutput.structure_score,
+      structureScore: starOutput.structure_score ?? 0,
       starFilled: starOutput.starFilled,
       situation: starOutput.situation.status,
       task: starOutput.task.status,
@@ -223,7 +224,7 @@ export class MultiAgentPipeline {
 
     onStage?.('star', 'done', {
       filled: starOutput.starFilled,
-      structure: starOutput.structure_score,
+      structure: starOutput.structure_score ?? 0,
       star: {
         situation: starOutput.situation.status,
         task: starOutput.task.status,

@@ -14,6 +14,23 @@ import { useEffect, useState } from "react";
 
 const compLabel = (id: string) => COMPETENCIES.find((c) => c.id === id)?.label || id;
 
+function TrajectoryTooltip({ active, payload }: any) {
+  if (!active || !payload?.length) return null;
+
+  // Read the score from the active chart row itself. Recharts' formatter can
+  // receive a stale value when adjacent points share the same formatted date.
+  const point = payload[0]?.payload;
+  const score = Number(point?.score);
+  if (!Number.isFinite(score)) return null;
+
+  return (
+    <div className="border-2 border-line bg-white px-4 py-3 font-mono text-[11px] shadow-[4px_4px_0_#111111]">
+      <div className="mb-2">{point.date}</div>
+      <div>SCORE : {score}/100</div>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const [sessions, setSessions] = useState<any[]>([]);
   const [p, setP] = useState<any>({ index: 0, avg: 0, starRate: 0, streak: 0, trend: [], gaps: [], weekCount: 0, total: 0 });
@@ -249,10 +266,7 @@ export default function Dashboard() {
                     <CartesianGrid stroke="#111111" strokeDasharray="3 3" opacity={0.15} vertical={false} />
                     <XAxis dataKey="date" tick={{ fill: "#111111", fontSize: 10, fontFamily: "monospace", fontWeight: 700 }} tickLine={false} axisLine={{ stroke: "#111111", strokeWidth: 2 }} />
                     <YAxis domain={[40, 100]} tick={{ fill: "#111111", fontSize: 10, fontFamily: "monospace", fontWeight: 700 }} tickLine={false} axisLine={{ stroke: "#111111", strokeWidth: 2 }} />
-                    <Tooltip
-                      contentStyle={{ borderRadius: 0, border: "2px solid #111111", background: "#FFFFFF", fontSize: 11, fontFamily: "monospace", boxShadow: "4px 4px 0 #111111" }}
-                      formatter={(v) => [`${v}/100`, "SCORE"]}
-                    />
+                    <Tooltip content={<TrajectoryTooltip />} />
                     <Area type="monotone" dataKey="score" stroke="#111111" strokeWidth={3} fill="url(#prepBrutal)" />
                   </AreaChart>
                 </ResponsiveContainer>

@@ -174,7 +174,7 @@ export function normalizeResumeProfile(rawParsed: any, userAccount?: { name?: st
 
   // 1. Basics & Contact (Explicit field mapping per Section 8)
   const rawBasics = rawParsed.basics || {};
-  let extractedName = (
+  const extractedName = (
     rawBasics.fullName ||
     rawBasics.name ||
     rawParsed.fullName ||
@@ -194,7 +194,7 @@ export function normalizeResumeProfile(rawParsed: any, userAccount?: { name?: st
     name = extractedName || userAccount?.name || '';
   }
 
-  let extractedEmail = (rawBasics.email || rawParsed.email || '').trim();
+  const extractedEmail = (rawBasics.email || rawParsed.email || '').trim();
   let email = '';
   if (extractedEmail) {
     email = extractedEmail;
@@ -204,9 +204,9 @@ export function normalizeResumeProfile(rawParsed: any, userAccount?: { name?: st
     email = extractedEmail || userAccount?.email || '';
   }
 
-  let phone = (rawBasics.phone || rawParsed.phone || '').trim();
-  let location = (rawBasics.location || rawParsed.location || '').trim();
-  let summary = (rawBasics.summary || rawParsed.summary || rawParsed.profileSummary || rawParsed.about || '').trim();
+  const phone = (rawBasics.phone || rawParsed.phone || '').trim();
+  const location = (rawBasics.location || rawParsed.location || '').trim();
+  const summary = (rawBasics.summary || rawParsed.summary || rawParsed.profileSummary || rawParsed.about || '').trim();
 
   // 2. Education (Explicit field mapping per Section 8)
   const rawEdu = rawParsed.education || rawParsed.academics || rawParsed.academicBackground || [];

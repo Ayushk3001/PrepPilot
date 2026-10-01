@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import type { ChatCompletion, ChatCompletionCreateParams } from 'openai/resources/chat/completions';
 
 export const DEFAULT_BASE_URL = 'https://aicredits.in/v1';
 export const DEFAULT_MODEL = 'gpt-5-nano';
@@ -43,9 +44,50 @@ export interface ChatOptions {
   questionSource?: 'llm' | 'fallback';
 }
 
+export interface ProviderContentPart {
+  type?: string;
+  text?: string;
+  content?: string;
+}
+
+export interface ProviderMessage {
+  content?: string | ProviderContentPart[] | null;
+  output_text?: string | null;
+  [key: string]: unknown;
+}
+
+export interface ProviderChoice {
+  finish_reason?: string | null;
+  message?: ProviderMessage;
+  text?: string | null;
+  [key: string]: unknown;
+}
+
+export interface ProviderUsage {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+  completion_tokens_details?: { reasoning_tokens?: number; [key: string]: unknown };
+}
+
+export interface ProviderResponse {
+  choices?: ProviderChoice[];
+  output_text?: string | null;
+  output?: Array<Record<string, unknown>>;
+  usage?: ProviderUsage;
+  model?: string;
+  _request_id?: string;
+  request_id?: string;
+  [key: string]: unknown;
+}
+
+function asProviderResponse(response: unknown): ProviderResponse {
+  return response && typeof response === 'object' ? response as ProviderResponse : {};
+}
+
 /** Extract assistant text across OpenAI-compatible response shapes. */
 export function extractChatCompletionContent(response: unknown): string {
-  const value = response as any;
+  const value = asProviderResponse(response);
   const choice = value?.choices?.[0];
   const message = choice?.message;
   const candidates = [
@@ -53,12 +95,16 @@ export function extractChatCompletionContent(response: unknown): string {
     message?.output_text,
     choice?.text,
     value?.output_text,
-    ...(Array.isArray(value?.output) ? value.output.flatMap((item: any) => item?.content || item?.text || []) : []),
+    ...(Array.isArray(value?.output) ? value.output.flatMap((item) => {
+      const content = item.content;
+      const text = item.text;
+      return Array.isArray(content) ? content : content || text || [];
+    }) : []),
   ];
   for (const candidate of candidates) {
     if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
     if (Array.isArray(candidate)) {
-      const text = candidate.map((part: any) => typeof part === 'string' ? part : part?.text || part?.content || '').join('').trim();
+      const text = candidate.map((part: string | ProviderContentPart) => typeof part === 'string' ? part : part.text || part.content || '').join('').trim();
       if (text) return text;
     }
   }
@@ -66,7 +112,7 @@ export function extractChatCompletionContent(response: unknown): string {
 }
 
 export function getChatCompletionContentLocations(response: unknown): string[] {
-  const value = response as any;
+  const value = asProviderResponse(response);
   const choice = value?.choices?.[0];
   const message = choice?.message;
   const locations: string[] = [];
@@ -86,17 +132,17 @@ export async function executeChatCompletion(options: ChatOptions) {
   const client = getOpenAIClient(options.apiKey, options.baseURL);
   const model = options.model || process.env.OPENAI_MODEL || DEFAULT_MODEL;
 
-  const params: any = {
+  const params = {
     model,
     messages: options.messages,
     temperature: options.temperature ?? 0.2,
-  };
+  } as ChatCompletionCreateParams;
 
   if (options.responseFormat === 'json_object') {
     params.response_format = { type: 'json_object' };
   }
-  const defaultOutputTokens = options.purpose === 'answer_evaluation' || options.component === 'unified-evaluation'
-    ? 700
+  const defaultOutputTokens = options.purpose === 'answer_evaluation'
+    ? 1500
     : options.purpose === 'interview_question_generation' ? 400
       : options.purpose === 'resume_context_processing' ? 2400 : 1200;
   // max_completion_tokens is accepted by the GPT-5-compatible provider and
@@ -107,7 +153,7 @@ export async function executeChatCompletion(options: ChatOptions) {
   // bounded completion budget is reserved for the requested question.
   if (options.reasoningEffort) params.reasoning_effort = options.reasoningEffort;
 
-  const reqOpts: any = {};
+  const reqOpts: { timeout?: number; maxRetries?: number } = {};
   if (typeof options.timeoutMs === 'number') {
     reqOpts.timeout = options.timeoutMs;
   }
@@ -115,14 +161,17 @@ export async function executeChatCompletion(options: ChatOptions) {
   // retry deliberately; this prevents SDK retries from multiplying usage.
   reqOpts.maxRetries = options.maxRetries ?? 0;
 
-  if (options.stream) params.stream = true;
+  if (options.stream) (params as { stream?: boolean }).stream = true;
 
   const startedAt = Date.now();
   try {
-    const result = await client.chat.completions.create(params, reqOpts);
-    const usage = (result as any)?.usage;
+    const result = await client.chat.completions.create(params, reqOpts) as ChatCompletion & { request_id?: string };
+    const responseObject = asProviderResponse(result);
+    const usage = responseObject.usage;
+    const reasoningTokens = usage?.completion_tokens_details && typeof usage.completion_tokens_details.reasoning_tokens === 'number'
+      ? usage.completion_tokens_details.reasoning_tokens
+      : undefined;
     const providerContent = extractChatCompletionContent(result);
-    const responseObject = result as any;
     const firstChoice = responseObject?.choices?.[0];
     const message = firstChoice?.message;
     // This module is also imported by browser-shared interviewer code, so it
@@ -132,10 +181,12 @@ export async function executeChatCompletion(options: ChatOptions) {
       component: options.component || 'chat-completion',
       request_id: options.requestId,
       model,
+      max_output_tokens: params.max_completion_tokens,
+      reasoning_effort: options.reasoningEffort,
       provider_host: (() => { try { return new URL(options.baseURL || process.env.OPENAI_BASE_URL || DEFAULT_BASE_URL).host; } catch { return 'invalid-provider-url'; } })(),
       latency_ms: Date.now() - startedAt,
       provider_response_received: true,
-      finish_reason: (result as any)?.choices?.[0]?.finish_reason,
+      finish_reason: responseObject.choices?.[0]?.finish_reason,
       response_type: typeof result,
       top_level_keys: responseObject && typeof responseObject === 'object' ? Object.keys(responseObject).slice(0, 30) : [],
       choices_count: Array.isArray(responseObject?.choices) ? responseObject.choices.length : 0,
@@ -144,6 +195,9 @@ export async function executeChatCompletion(options: ChatOptions) {
       content_type: typeof message?.content,
       content_length: typeof message?.content === 'string' ? message.content.length : Array.isArray(message?.content) ? message.content.length : 0,
       raw_response_length: providerContent.length,
+      visible_output_estimate: typeof usage?.completion_tokens === 'number' && typeof reasoningTokens === 'number'
+        ? Math.max(0, usage.completion_tokens - reasoningTokens)
+        : undefined,
       raw_response_preview: providerContent.slice(0, 240),
       content_locations: getChatCompletionContentLocations(result),
       usage: usage ? { prompt_tokens: usage.prompt_tokens, completion_tokens: usage.completion_tokens, total_tokens: usage.total_tokens, completion_tokens_details: usage.completion_tokens_details } : undefined,
@@ -156,20 +210,22 @@ export async function executeChatCompletion(options: ChatOptions) {
       langgraph_node: options.langGraphNode,
       purpose: options.purpose || options.component || 'chat-completion',
       model,
+      max_output_tokens: params.max_completion_tokens,
+      reasoning_effort: options.reasoningEffort,
       attempt_number: 1,
       input_tokens: usage?.prompt_tokens,
       output_tokens: usage?.completion_tokens,
       total_tokens: usage?.total_tokens,
       latency_ms: Date.now() - startedAt,
       status: 'success',
-      finish_reason: (result as any)?.choices?.[0]?.finish_reason,
+      finish_reason: responseObject.choices?.[0]?.finish_reason,
       raw_response_length: providerContent.length,
-      provider_request_id: (result as any)?._request_id || (result as any)?.request_id,
+      provider_request_id: responseObject._request_id || responseObject.request_id,
       question_source: options.questionSource,
     }));
     return result;
   } catch (error) {
-    const errorObject = error as { status?: unknown; code?: unknown; type?: unknown; name?: unknown };
+    const errorObject = error && typeof error === 'object' ? error as { status?: unknown; code?: unknown; type?: unknown; name?: unknown; request_id?: unknown } : {};
     const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
     const fallbackReason = message.includes('timeout') || message.includes('timed out') ? 'timeout'
       : message.includes('401') || message.includes('403') || message.includes('api key') || message.includes('authentication') ? 'missing_or_invalid_api_key'
@@ -197,7 +253,7 @@ export async function executeChatCompletion(options: ChatOptions) {
       attempt_number: 1,
       latency_ms: Date.now() - startedAt,
       status: 'error',
-      provider_request_id: (error as any)?.request_id,
+      provider_request_id: errorObject.request_id,
       error_type: typeof errorObject?.name === 'string' ? errorObject.name : error instanceof Error ? error.constructor.name : 'unknown',
       http_status: typeof errorObject?.status === 'number' ? errorObject.status : undefined,
       fallback_reason: fallbackReason,

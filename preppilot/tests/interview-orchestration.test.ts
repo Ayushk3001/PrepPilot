@@ -78,7 +78,7 @@ test('a short non-answer cannot receive a passing evaluation', async () => {
 
   assert.ok(content.relevance <= 30);
   assert.ok(content.completeness <= 24);
-  assert.ok(star.structure_score < 30);
+  assert.ok((star.structure_score ?? 0) < 30);
   assert.ok(coach.overallScore <= 25);
 });
 
